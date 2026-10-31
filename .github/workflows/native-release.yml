@@ -1,6 +1,7 @@
 name: Native npm release
 
 on:
+  pull_request:
   workflow_dispatch:
   push:
     tags:
