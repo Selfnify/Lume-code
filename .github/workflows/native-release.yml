@@ -73,6 +73,13 @@ jobs:
           npm install --global 'npm@^11.5.1'
           node -e "const [major,minor]=process.versions.node.split('.').map(Number);if(major<22||(major===22&&minor<14))throw Error('Trusted publishing requires Node.js 22.14 or newer')"
           node -e "const [major,minor,patch]=require('child_process').execSync('npm --version',{encoding:'utf8'}).trim().split('.').map(Number);if(major<11||(major===11&&minor<5)||(major===11&&minor===5&&patch<1))throw Error('Trusted publishing requires npm 11.5.1 or newer')"
+      - name: Remove token config so npm can use OIDC
+        shell: bash
+        run: |
+          npmrc="${NPM_CONFIG_USERCONFIG:-$HOME/.npmrc}"
+          if [[ -f "$npmrc" ]]; then
+            sed -i '/_authToken/d; /^always-auth=/d' "$npmrc"
+          fi
       - uses: actions/download-artifact@v4
         with:
           name: native-win32-x64
