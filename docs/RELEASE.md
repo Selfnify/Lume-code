@@ -51,7 +51,7 @@ The npm account owner configured the trusted publisher with 2FA using:
 npm trust github lume-code --file native-release.yml --repository Selfnify/Lume-code --allow-publish --yes
 ```
 
-The owner completed npm authentication and npm confirmed GitHub Actions trust for repository `Selfnify/Lume-code`, workflow `native-release.yml`, with `publish` and `stage publish` permissions (ID `c9f404a2-b49c-4d0b-8cc9-281765a5d75d`). The GitHub integration could not rerun only the failed job (HTTP 403, Actions write unavailable), so the unpublished `v0.2.4` tag was force-updated to commit `6039d22` on `main`. A fresh full run (`41241691359`) is queued. After the owner reports that it is finished, inspect the run and verify the registry has `0.2.4` with all three platform folders before reporting success. Don't bump the version while `0.2.4` is unpublished.
+The owner completed npm authentication and npm confirmed GitHub Actions trust for repository `Selfnify/Lume-code`, workflow `native-release.yml`, with `publish` and `stage publish` permissions (ID `c9f404a2-b49c-4d0b-8cc9-281765a5d75d`). Run `41240426510` still failed with E404. Its publish job had `NPM_CONFIG_USERCONFIG` and `NODE_AUTH_TOKEN` configured by setup-node. In addition to npm trust, the workflow now removes the generated `_authToken` entry before publishing so npm can perform its OIDC exchange. This fix is on `main` as `3c41cec`, and the unpublished `v0.2.4` tag points to it. After the owner reports the fresh run is finished, inspect its logs and verify the registry has `0.2.4` with all three platform folders before reporting success. Don't bump the version while `0.2.4` is unpublished.
 
 ## Configure npm trusted publishing
 
