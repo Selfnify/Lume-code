@@ -10,11 +10,6 @@ const targets = {
   'darwin-x64': ['lume-code', 'ast-grep']
 };
 const key = `${process.platform}-${process.arch}`;
-const names = targets[key];
-if (!names) {
-  throw new Error('Build this release on Windows x64, macOS arm64 or macOS x64.');
-}
-const [executableName, astraName] = names;
 const manifest = fs.readFileSync(path.join(root, 'Cargo.toml'), 'utf8');
 const version = manifest.match(/^version\s*=\s*"([^"]+)"/m)?.[1];
 if (version !== pkg.version) throw new Error('Cargo.toml and npm/package.json versions must match.');
@@ -35,6 +30,11 @@ if (externalBinaries) {
   console.log('Verified all staged Windows and macOS releases.');
   process.exit(0);
 }
+const names = targets[key];
+if (!names) {
+  throw new Error('Build this release on Windows x64, macOS arm64 or macOS x64.');
+}
+const [executableName, astraName] = names;
 // Build every bundled native executable as part of packing so local installs,
 // npm pack, and npm publish all produce a self-contained package.
 cargo(root, ['build', '--release', '--quiet', '--locked']);
