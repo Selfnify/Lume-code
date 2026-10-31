@@ -41,9 +41,15 @@ git push origin v<version>
 
 The tag starts `.github/workflows/native-release.yml`. Check the Actions run and confirm all three native builds and the `publish` job pass. Do not reuse a version that npm already has; npm versions cannot be overwritten.
 
-### Current 0.2.4 release status
+### 0.2.4 release status
 
-The first `v0.2.4` run (`41238704384`) built and verified all platform artifacts but failed at npm publishing with `E404`. Commit `f8eaa97` added the npm repository URL and upgraded the publish runner's npm version; the unpublished tag was moved to this commit. The retry (`41240426510`) also failed at npm publishing. Its logs show all binaries staged and provenance signed, followed by `E404` on the package `PUT`. This points to npm not authorizing the exact GitHub workflow identity, commonly because the trusted-publisher settings do not match. No successful `0.2.4` publish has been verified; latest known is `0.2.3`.
+`lume-code@0.2.4` is published and is the npm `latest` version. GitHub Actions run `41241691359` succeeded at commit `6039d22`, including all three native build jobs and the npm publish job. The account owner configured npm trusted publishing for GitHub Actions (`Selfnify/Lume-code`, `native-release.yml`) with publish permission before that run.
+
+Verified the package through npm: `npm view lume-code version dist-tags dist.tarball --json` reports version/latest `0.2.4`. `npm pack lume-code@0.2.4 --dry-run --json` reports all nine files, including Windows x64, Intel macOS, and Apple Silicon executables. Both macOS binaries have executable mode `755`. Package size is 34,534,816 bytes (183,308,307 unpacked); shasum `e0463b3f059f2e762bf30e8157f18a45279e55f7`.
+
+Two release runs overlapped. Run `41241949289` also built successfully, but its publish job failed after run `41241691359` had published `0.2.4`. npm versions are immutable, so a second publish of the same version is expected to fail; this does not undo the successful publish. Do not retry or republish `0.2.4`.
+
+The workflow cleanup that removes setup-node's auth-token placeholder was added in commit `3c41cec`, after the successful run's source commit. It is retained as a defensive OIDC configuration improvement for future releases, but should not be described as a proven cause/fix for the successful `0.2.4` publish. For future versions, push one version tag once and avoid overlapping release runs.
 
 The npm account owner configured the trusted publisher with 2FA using:
 
@@ -51,7 +57,7 @@ The npm account owner configured the trusted publisher with 2FA using:
 npm trust github lume-code --file native-release.yml --repository Selfnify/Lume-code --allow-publish --yes
 ```
 
-The owner completed npm authentication and npm confirmed GitHub Actions trust for repository `Selfnify/Lume-code`, workflow `native-release.yml`, with `publish` and `stage publish` permissions (ID `c9f404a2-b49c-4d0b-8cc9-281765a5d75d`). Run `41240426510` still failed with E404. Its publish job had `NPM_CONFIG_USERCONFIG` and `NODE_AUTH_TOKEN` configured by setup-node. In addition to npm trust, the workflow now removes the generated `_authToken` entry before publishing so npm can perform its OIDC exchange. This fix is on `main` as `3c41cec`, and the unpublished `v0.2.4` tag points to it. After the owner reports the fresh run is finished, inspect its logs and verify the registry has `0.2.4` with all three platform folders before reporting success. Don't bump the version while `0.2.4` is unpublished.
+The owner completed npm authentication and npm confirmed GitHub Actions trust for repository `Selfnify/Lume-code`, workflow `native-release.yml`, with `publish` and `stage publish` permissions (ID `c9f404a2-b49c-4d0b-8cc9-281765a5d75d`). A subsequent full run was triggered after trust configuration. A defensive setup-node auth-token cleanup is also on `main` as `3c41cec`; the tag points to that workflow improvement for future runs. The successful publish is verified above. The later overlapping run failed at publish after the same version had already been published, so it should not be retried.
 
 ## Configure npm trusted publishing
 
