@@ -41,6 +41,10 @@ git push origin v<version>
 
 The tag starts `.github/workflows/native-release.yml`. Check the Actions run and confirm all three native builds and the `publish` job pass. Do not reuse a version that npm already has; npm versions cannot be overwritten.
 
+### Current 0.2.4 release status
+
+The first `v0.2.4` run (`41238704384`) built and verified all platform artifacts but failed at npm publishing with `E404`. Commit `f8eaa97` added the npm repository URL and upgraded the publish runner's npm version; the unpublished tag was moved to this commit. The retry (`41240426510`) was also reported as failed with `Error: Process completed with exit code 1.` Its failing step and detailed logs still need inspection. No successful `0.2.4` publish has been verified; the latest known npm version is `0.2.3`. Inspect the retry's failed job logs before changing versions or retrying again, and verify the npm package's trusted publisher configuration if the failure is in the publish step.
+
 ## Configure npm trusted publishing
 
 For `npm publish --provenance` from GitHub Actions, configure the `lume-code` package on npmjs.com under **Package settings → Trusted publishing**:
