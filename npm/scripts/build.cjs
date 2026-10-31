@@ -4,9 +4,17 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const root = path.resolve(__dirname, '../..');
 const pkg = require('../package.json');
-if (process.platform !== 'win32' || process.arch !== 'x64') {
-  throw new Error('Build this release on Windows x64.');
+const targets = {
+  'win32-x64': ['lume-code.exe', 'ast-grep.exe'],
+  'darwin-arm64': ['lume-code', 'ast-grep'],
+  'darwin-x64': ['lume-code', 'ast-grep']
+};
+const key = `${process.platform}-${process.arch}`;
+const names = targets[key];
+if (!names) {
+  throw new Error('Build this release on Windows x64, macOS arm64 or macOS x64.');
 }
+const [executableName, astraName] = names;
 const cargo = fs.readFileSync(path.join(root, 'Cargo.toml'), 'utf8');
 const version = cargo.match(/^version\s*=\s*"([^"]+)"/m)?.[1];
 if (version !== pkg.version) throw new Error('Cargo.toml and npm/package.json versions must match.');
@@ -15,10 +23,16 @@ for (const args of [['test', '--quiet'], ['build', '--release', '--quiet', '--lo
   if (result.error) throw result.error;
   if (result.status !== 0) process.exit(result.status || 1);
 }
-const native = path.join(__dirname, '..', 'native');
+const native = path.join(__dirname, '..', 'native', key);
 fs.mkdirSync(native, { recursive: true });
-fs.copyFileSync(path.join(root, 'target/release/lume-code.exe'), path.join(native, 'lume-code.exe'));
-const astra = path.join(root, 'third-party', 'ast-grep', 'target', 'release', 'ast-grep.exe');
+const executable = path.join(native, executableName);
+fs.copyFileSync(path.join(root, 'target', 'release', executableName), executable);
+const astra = path.join(root, 'third-party', 'ast-grep', 'target', 'release', astraName);
 if (!fs.existsSync(astra)) throw new Error('ASTRA binary is missing; build third-party/ast-grep first.');
-fs.copyFileSync(astra, path.join(native, 'ast-grep.exe'));
-console.log('Packaged the tested Windows x64 release.');
+const astraTarget = path.join(native, astraName);
+fs.copyFileSync(astra, astraTarget);
+if (process.platform !== 'win32') {
+  fs.chmodSync(executable, 0o755);
+  fs.chmodSync(astraTarget, 0o755);
+}
+console.log(`Packaged the tested ${key} release.`);

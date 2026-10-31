@@ -5,7 +5,7 @@ The full reference for commands, sessions, limits and publishing. For an overvie
 ## Install and sign in
 
 For an npm installation, run `npm install --global @selfnify/lume-code`, then
-type `lume` from any project folder. The package currently supports Windows x64.
+type `lume` from any project folder. The package supports Windows x64 and macOS (Apple Silicon and Intel). macOS support is new and still being tested.
 `lume login`, `lume logout`, and `lume --project "C:\path\to\project"` forward to
 the native app. `lume --help` and `lume --version` also work without signing in.
 
@@ -15,8 +15,9 @@ The publishable package is in `npm/`. Its explicit file list includes only the
 launcher, release executable, public README and package metadata. Rust sources,
 local sessions and credentials are not packaged. Consumers do not need Rust.
 Before packing or publishing, `prepack` runs the native tests, builds a locked
-release, and copies the executable into the package. Publish from Windows x64
-with Rust installed. Both Cargo and npm versions must match for each release.
+release, and copies the executable into the package. Run `node scripts/build.cjs`
+on each supported OS: it writes `npm/native/<platform>-<arch>/`. Copy the macOS
+folders into `npm/native/` on the machine you publish from, then publish with Rust installed. Both Cargo and npm versions must match for each release.
 
 ```powershell
 cd path\to\Lume-code\npm
@@ -34,11 +35,11 @@ that name when installing.
 To install this local build before publishing, run `npm install --global .` from
 the `npm/` folder after `npm pack`, then run `lume` in your project folder.
 
-Build with `cargo build --release`, then run `target\release\lume-code.exe login`, or launch normally when signed out. Select **Sign in with browser** (Enter or click). The backend creates an exactly 100-character public token and the app opens Lume's existing login page. Use your normal password or email-code sign-in there, compare the confirmation code, then select **Connect Lume Code**. The desktop app finishes automatically. The login screen lives in `src/login/`.
+Build with `cargo build --release`, then run `target\release\lume-code.exe login` on Windows or `target/release/lume-code login` on macOS, or launch normally when signed out. Select **Sign in with browser** (Enter or click). The backend creates an exactly 100-character public token and the app opens Lume's existing login page. Use your normal password or email-code sign-in there, compare the confirmation code, then select **Connect Lume Code**. The desktop app finishes automatically. The login screen lives in `src/login/`.
 
-If the browser does not open, the terminal shows the full public token and URL. Select **Copy URL** or press C, then open that URL yourself. The link lasts ten minutes. Esc or Ctrl-C cancels sign-in; expired or denied requests can be retried with a new link. The URL token is not an account credential: a separate private verifier remains in the desktop process, and only an approved session is saved in Windows Credential Manager. Passwords and email codes are entered only in the existing website.
+If the browser does not open, the terminal shows the full public token and URL. Select **Copy URL** or press C, then open that URL yourself. The link lasts ten minutes. Esc or Ctrl-C cancels sign-in; expired or denied requests can be retried with a new link. The URL token is not an account credential: a separate private verifier remains in the desktop process, and only an approved session is saved in Windows Credential Manager or the macOS Keychain. Passwords and email codes are entered only in the existing website.
 
-Run the executable from your project folder, or pass `--project "C:\path\to\project"`. Relative file operations stay inside that folder. The terminal header shows the selected folder. Sessions are stored in Windows Credential Manager; the client contains no model-provider credentials. `lume-code logout` revokes the session and removes its local credential.
+Run the executable from your project folder, or pass `--project "C:\path\to\project"`. Relative file operations stay inside that folder. The terminal header shows the selected folder. Sessions are stored in Windows Credential Manager or the macOS Keychain; the client contains no model-provider credentials. `lume-code logout` revokes the session and removes its local credential.
 
 ## Controls
 
@@ -79,11 +80,11 @@ The ordinary Lume website remains available for account settings, support and gr
 
 ## Continuity and limits
 
-Conversations and Tasker activity are saved atomically under `%LOCALAPPDATA%\LumeCode\sessions`, separately for each account, backend and project. Credentials are never saved in these JSON files. Account data-epoch changes discard stale local continuity on the next connection. `/clear` and `/new` archive the current conversation before starting fresh; `/resume` restores an archived session. Local history storage is capped at 32 MiB per project conversation.
+Conversations and Tasker activity are saved atomically under `%LOCALAPPDATA%\LumeCode\sessions` on Windows or `~/Library/Application Support/LumeCode/sessions` on macOS, separately for each account, backend and project. Credentials are never saved in these JSON files. Account data-epoch changes discard stale local continuity on the next connection. `/clear` and `/new` archive the current conversation before starting fresh; `/resume` restores an archived session. Local history storage is capped at 32 MiB per project conversation.
 
 An atomic progress journal records the current request, partial reply and tool events at roughly half-second intervals and on tool execution/results. Restarting restores that partial reply without duplication, identifies unconfirmed actions, and offers Continue. A stream ending without its completion marker remains interrupted. Progress saved just before a process closes can lag by up to one journal interval; an unconfirmed action must be inspected rather than assumed to have failed. A per-project OS lock prevents two windows from overwriting the same saved session and releases automatically when a process exits. Account verification still needs the API when opening a session. Side history uses a separate local journal and is included in session snapshots, without being sent to the main model.
 
-Local writes are at most 4,096 UTF-8 bytes per action, with resumable byte offsets and atomic replacement. Individual files and uploads are capped at 8 MiB; search/read results are bounded. Links, junctions, traversal, absolute file paths and reserved Windows device names are rejected by file tools. Commands run for at most 60 seconds with 64 KiB retained per output stream. A Windows Job Object terminates descendants when stopped. Commands are intended for finite work; use Coworker for long-running programs.
+Local writes are at most 4,096 UTF-8 bytes per action, with resumable byte offsets and atomic replacement. Individual files and uploads are capped at 8 MiB; search/read results are bounded. Links, junctions, traversal, absolute file paths and reserved Windows device names are rejected by file tools. Commands run for at most 60 seconds with 64 KiB retained per output stream. On Windows a Job Object terminates descendants when stopped, and on macOS the command's whole process group is killed. Commands are intended for finite work; use Coworker for long-running programs.
 
 The initial account allowance is 30 accepted messages per five-hour window and 150 per seven-day window, shared with normal Lume. These are Lume defaults, not a claim about another product's exact allowance. Tool rounds do not count as additional messages and output tokens are not capped by this feature. The server exposes both reset times. Administrators can configure `LUME_USAGE_FIVE_HOUR_MESSAGES` and `LUME_USAGE_WEEKLY_MESSAGES`.
 

@@ -41,11 +41,19 @@ impl Drop for ProcessTree {
         }
     }
 }
-#[cfg(not(windows))]
-pub struct ProcessTree;
-#[cfg(not(windows))]
+#[cfg(unix)]
+pub struct ProcessTree(Option<i32>);
+#[cfg(unix)]
 impl ProcessTree {
-    pub fn attach(_: &tokio::process::Child) -> Result<Self, String> {
-        Ok(Self)
+    pub fn attach(child: &tokio::process::Child) -> Result<Self, String> {
+        Ok(Self(child.id().and_then(|id| i32::try_from(id).ok())))
+    }
+}
+#[cfg(unix)]
+impl Drop for ProcessTree {
+    fn drop(&mut self) {
+        if let Some(group) = self.0 {
+            let _ = unsafe { libc::killpg(group, libc::SIGKILL) };
+        }
     }
 }

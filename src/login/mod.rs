@@ -70,7 +70,23 @@ fn copy(url: &str) -> Result<(), String> {
     {
         clipboard_win::set_clipboard_string(url).map_err(|e| e.to_string())
     }
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
+    {
+        use std::io::Write;
+        let mut child = Command::new("pbcopy")
+            .stdin(Stdio::piped())
+            .spawn()
+            .map_err(|e| e.to_string())?;
+        child
+            .stdin
+            .take()
+            .ok_or("Could not reach the clipboard.")?
+            .write_all(url.as_bytes())
+            .map_err(|e| e.to_string())?;
+        child.wait().map_err(|e| e.to_string())?;
+        Ok(())
+    }
+    #[cfg(not(any(windows, target_os = "macos")))]
     {
         let _ = url;
         Err("Select and copy the URL shown above.".into())

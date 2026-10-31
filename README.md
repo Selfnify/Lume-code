@@ -23,14 +23,14 @@ Lume Code reads and edits files in your project, runs commands with your approva
 
 ## Install
 
-Requires Windows x64 and Node.js 20 or newer. Rust is not needed to use the npm package.
+Requires Windows x64 or macOS (Apple Silicon or Intel), and Node.js 20 or newer. Rust is not needed to use the npm package.
 
 ```powershell
 npm install --global lume-code
 lume
 ```
 
-Platform support today is Windows x64. macOS support is planned.
+Supported platforms: Windows x64 and macOS (Apple Silicon and Intel). macOS support is new and still being tested.
 
 ## Quick start
 
@@ -40,7 +40,7 @@ lume
 lume --project "C:\path\to\project"
 ```
 
-Sign in through your browser with your normal Lume account. Your session is stored in the Windows Credential Manager, and the client contains no model provider keys. Type `/` inside Lume for commands, or `?` for keyboard shortcuts.
+Sign in through your browser with your normal Lume account. Your session is stored in the Windows Credential Manager or the macOS Keychain, and the client contains no model provider keys. Type `/` inside Lume for commands, or `?` for keyboard shortcuts.
 
 ## Safety
 
@@ -55,11 +55,12 @@ Lume Code connects to the public Lume API at `https://api.lume.dpdns.org`. Set `
 
 ## Build from source
 
-```powershell
+```sh
 cargo build --release
-target\release\lume-code.exe login
 cargo test
 ```
+
+Then run `target/release/lume-code login` on macOS, or `target\release\lume-code.exe login` on Windows.
 
 ## Documentation
 

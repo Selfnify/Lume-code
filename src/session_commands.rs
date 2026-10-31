@@ -66,7 +66,11 @@ impl Settings {
 pub fn directory(current: &std::path::Path, arg: &str) -> Result<PathBuf, String> {
     let value = arg.trim().trim_matches('"');
     if value.is_empty() {
-        return Err("Provide a directory path, for example /cd \"C:\\Projects\\app\".".into());
+        return Err(if cfg!(windows) {
+            "Provide a directory path, for example /cd \"C:\\Projects\\app\".".into()
+        } else {
+            "Provide a directory path, for example /cd \"/Users/you/projects/app\".".into()
+        });
     }
     let path = std::path::Path::new(value);
     let path = if path.is_absolute() {

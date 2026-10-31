@@ -9,15 +9,18 @@
   },
   "files": [
     "bin/lume.cjs",
-    "native/lume-code.exe",
-    "native/ast-grep.exe",
+    "native/win32-x64/",
+    "native/darwin-arm64/",
+    "native/darwin-x64/",
     "README.md"
   ],
   "os": [
-    "win32"
+    "win32",
+    "darwin"
   ],
   "cpu": [
-    "x64"
+    "x64",
+    "arm64"
   ],
   "engines": {
     "node": ">=20"

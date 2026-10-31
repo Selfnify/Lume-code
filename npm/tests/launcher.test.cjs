@@ -36,6 +36,24 @@ test('unsupported platforms, missing binaries and launch failures report actiona
   assert.equal(run([], { platform: 'win32', arch: 'x64', executable: process.execPath, write,
     spawn: () => ({ error: new Error('denied') }) }), 1);
   assert.match(output, /Windows x64/);
+  assert.match(output, /macOS/);
   assert.match(output, /Reinstall/);
   assert.match(output, /denied/);
+});
+test('macOS builds start through the same launcher on both architectures', () => {
+  for (const arch of ['arm64', 'x64']) {
+    let called = false;
+    const status = run(['login'], {
+      platform: 'darwin', arch, executable: process.execPath,
+      spawn(exe, received, options) {
+        called = true;
+        assert.equal(exe, process.execPath);
+        assert.deepEqual(received, ['login']);
+        assert.equal(options.shell, false);
+        return { status: 0 };
+      }
+    });
+    assert.ok(called);
+    assert.equal(status, 0);
+  }
 });

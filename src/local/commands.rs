@@ -77,6 +77,8 @@ pub async fn run(root: &Path, args: &Value) -> Result<Value, String> {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
+    #[cfg(unix)]
+    command.process_group(0);
     let mut child = command.spawn().map_err(|e| e.to_string())?;
     let _tree = match super::lifetime::ProcessTree::attach(&child) {
         Ok(v) => v,

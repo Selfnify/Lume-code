@@ -6,11 +6,22 @@ use std::{
     path::{Path, PathBuf},
 };
 pub fn location(api: &str, identity: &str, root: &Path) -> Result<PathBuf, String> {
-    let home = std::env::var_os("LOCALAPPDATA")
-        .or_else(|| std::env::var_os("HOME"))
-        .ok_or("Could not find your private application-data folder.")?;
+    let base = match std::env::var_os("LOCALAPPDATA") {
+        Some(dir) => PathBuf::from(dir),
+        None => {
+            let home = PathBuf::from(
+                std::env::var_os("HOME")
+                    .ok_or("Could not find your private application-data folder.")?,
+            );
+            if cfg!(target_os = "macos") {
+                home.join("Library/Application Support")
+            } else {
+                home
+            }
+        }
+    };
     let hash = Sha256::digest(format!("{api}\0{identity}\0{}", root.display()).as_bytes());
-    Ok(PathBuf::from(home)
+    Ok(base
         .join("LumeCode/sessions")
         .join(format!("{hash:x}.json")))
 }

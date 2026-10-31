@@ -5,6 +5,11 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { existsSync } = require('node:fs');
 const pkg = require('../package.json');
+const targets = {
+  'win32-x64': 'lume-code.exe',
+  'darwin-arm64': 'lume-code',
+  'darwin-x64': 'lume-code'
+};
 
 function run(args, options = {}) {
   const platform = options.platform || process.platform;
@@ -21,11 +26,13 @@ function run(args, options = {}) {
       'Inside Lume, type / for commands or ? for keyboard shortcuts.\n');
     return 0;
   }
-  if (platform !== 'win32' || arch !== 'x64') {
-    write('Lume Code currently supports Windows x64.\n');
+  const key = `${platform}-${arch}`;
+  const binary = targets[key];
+  if (!binary) {
+    write('Lume Code currently supports Windows x64 and macOS (Apple Silicon and Intel).\n');
     return 1;
   }
-  const executable = options.executable || path.join(__dirname, '..', 'native', 'lume-code.exe');
+  const executable = options.executable || path.join(__dirname, '..', 'native', key, binary);
   if (!existsSync(executable)) {
     write('The Lume executable is missing. Reinstall the npm package.\n');
     return 1;
