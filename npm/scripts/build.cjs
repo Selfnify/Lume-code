@@ -27,8 +27,12 @@ const native = path.join(__dirname, '..', 'native', key);
 fs.mkdirSync(native, { recursive: true });
 const executable = path.join(native, executableName);
 fs.copyFileSync(path.join(root, 'target', 'release', executableName), executable);
-const astra = path.join(root, 'third-party', 'ast-grep', 'target', 'release', astraName);
-if (!fs.existsSync(astra)) throw new Error('ASTRA binary is missing; build third-party/ast-grep first.');
+const astra = [
+  process.env.LUME_ASTRA_BIN,
+  path.join(root, 'third-party', 'ast-grep', 'target', 'release', astraName),
+  path.join(__dirname, '..', 'native', astraName)
+].filter(Boolean).find(file => fs.existsSync(file));
+if (!astra) throw new Error('ASTRA binary is missing. Build third-party/ast-grep, set LUME_ASTRA_BIN, or keep a previous ast-grep in npm/native.');
 const astraTarget = path.join(native, astraName);
 fs.copyFileSync(astra, astraTarget);
 if (process.platform !== 'win32') {
