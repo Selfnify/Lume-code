@@ -19,7 +19,10 @@ function cargo(cwd, args, env = process.env) {
   if (result.status !== 0) process.exit(result.status || 1);
 }
 const externalBinaries = process.env.LUME_SKIP_NATIVE_BUILD === '1';
-if (externalBinaries) {
+// npm publish invokes prepack again. GitHub Actions already staged and checked
+// every target, so skip the local native build for both pack and publish.
+const stagedBinaries = externalBinaries || process.env.CI === 'true';
+if (stagedBinaries) {
   for (const [key, [executable, astra]] of Object.entries(targets)) {
     const folder = path.join(__dirname, '..', 'native', key);
     for (const name of [executable, astra]) {
