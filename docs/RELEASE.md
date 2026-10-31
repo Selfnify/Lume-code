@@ -43,7 +43,15 @@ The tag starts `.github/workflows/native-release.yml`. Check the Actions run and
 
 ### Current 0.2.4 release status
 
-The first `v0.2.4` run (`41238704384`) built and verified all platform artifacts but failed at npm publishing with `E404`. Commit `f8eaa97` added the npm repository URL and upgraded the publish runner's npm version; the unpublished tag was moved to this commit. The retry (`41240426510`) was also reported as failed with `Error: Process completed with exit code 1.` Its failing step and detailed logs still need inspection. No successful `0.2.4` publish has been verified; the latest known npm version is `0.2.3`. Inspect the retry's failed job logs before changing versions or retrying again, and verify the npm package's trusted publisher configuration if the failure is in the publish step.
+The first `v0.2.4` run (`41238704384`) built and verified all platform artifacts but failed at npm publishing with `E404`. Commit `f8eaa97` added the npm repository URL and upgraded the publish runner's npm version; the unpublished tag was moved to this commit. The retry (`41240426510`) also failed at npm publishing. Its logs show all binaries staged and provenance signed, followed by `E404` on the package `PUT`. This points to npm not authorizing the exact GitHub workflow identity, commonly because the trusted-publisher settings do not match. No successful `0.2.4` publish has been verified; latest known is `0.2.3`.
+
+The npm account owner must configure the trusted publisher with 2FA. From `npm/`, the intended configuration command is:
+
+```powershell
+npm trust github lume-code --file native-release.yml --repository Selfnify/Lume-code --allow-publish --yes
+```
+
+The owner must complete npm's authentication prompt. I attempted this command, but it stopped with `EOTP`; no account setting was changed. If npm says a trust relationship already exists, inspect `npm trust list lume-code` and replace the incorrect entry with the exact values above. Once configured, rerun the failed publish job for `41240426510` (or re-trigger the same tag) and verify the registry has `0.2.4` with all three platform folders before reporting success. Don't bump the version while `0.2.4` is unpublished.
 
 ## Configure npm trusted publishing
 
