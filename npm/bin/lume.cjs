@@ -37,7 +37,10 @@ function run(args, options = {}) {
     write('The Lume executable is missing. Reinstall the npm package.\n');
     return 1;
   }
+  const astra = path.join(path.dirname(executable), platform === 'win32' ? 'ast-grep.exe' : 'ast-grep');
+  const env = { ...process.env, LUME_ASTRA_BIN: astra };
   const result = (options.spawn || spawnSync)(executable, args, {
+    env,
     stdio: 'inherit', shell: false, windowsHide: false
   });
   if (result.error) {

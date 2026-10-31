@@ -1,6 +1,6 @@
 {
   "name": "lume-code",
-  "version": "0.2.0",
+  "version": "0.2.2",
   "description": "Lume Code, a terminal coding assistant for your Lume account.",
   "license": "Apache-2.0",
   "homepage": "https://lume.dpdns.org",
@@ -13,14 +13,6 @@
     "native/darwin-arm64/",
     "native/darwin-x64/",
     "README.md"
-  ],
-  "os": [
-    "win32",
-    "darwin"
-  ],
-  "cpu": [
-    "x64",
-    "arm64"
   ],
   "engines": {
     "node": ">=20"

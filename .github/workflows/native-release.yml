@@ -1,0 +1,93 @@
+name: Native npm release
+
+on:
+  pull_request:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: win32-x64
+            runner: windows-latest
+          - target: darwin-arm64
+            runner: macos-latest
+          - target: darwin-x64
+            runner: macos-15-intel
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Test and build native binaries
+        shell: bash
+        run: |
+          node -e "const fs=require('node:fs');const p=require('./npm/package.json');const c=fs.readFileSync('Cargo.toml','utf8').match(/^version\\s*=\\s*\"([^\"]+)\"/m)?.[1];if(p.version!==c)throw Error('Cargo and npm versions differ')"
+          cargo test --locked
+          npm test --prefix npm
+          cargo build --release --locked
+          cargo build --release --locked --manifest-path third-party/ast-grep/Cargo.toml -p ast-grep
+          mkdir -p "npm/native/${{ matrix.target }}"
+          if [[ "${{ matrix.target }}" == "win32-x64" ]]; then
+            cp target/release/lume-code.exe third-party/ast-grep/target/release/ast-grep.exe "npm/native/${{ matrix.target }}/"
+          else
+            cp target/release/lume-code third-party/ast-grep/target/release/ast-grep "npm/native/${{ matrix.target }}/"
+            chmod +x "npm/native/${{ matrix.target }}/"*
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ matrix.target }}
+          path: npm/native/${{ matrix.target }}/*
+          if-no-files-found: error
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - uses: actions/download-artifact@v4
+        with:
+          name: native-win32-x64
+          path: npm/native/win32-x64
+      - uses: actions/download-artifact@v4
+        with:
+          name: native-darwin-arm64
+          path: npm/native/darwin-arm64
+      - uses: actions/download-artifact@v4
+        with:
+          name: native-darwin-x64
+          path: npm/native/darwin-x64
+      - name: Verify staged binaries and package
+        working-directory: npm
+        env:
+          LUME_SKIP_NATIVE_BUILD: '1'
+        run: |
+          chmod +x native/darwin-arm64/lume-code native/darwin-arm64/ast-grep
+          chmod +x native/darwin-x64/lume-code native/darwin-x64/ast-grep
+          npm pack --dry-run
+      - name: Publish to npm with trusted publishing
+        working-directory: npm
+        run: npm publish --access public --provenance

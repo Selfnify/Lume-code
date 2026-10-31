@@ -23,9 +23,9 @@ Lume Code reads and edits files in your project, runs commands with your approva
 
 ## Install
 
-Requires Windows x64 or macOS (Apple Silicon or Intel), and Node.js 20 or newer. Rust is not needed to use the npm package.
+Requires Windows x64 or macOS (Apple Silicon or Intel), and Node.js 20 or newer. Rust is not needed to install or use the npm package; Rust and Cargo are needed only to build or publish it.
 
-```powershell
+```sh
 npm install --global lume-code
 lume
 ```
@@ -34,10 +34,10 @@ Supported platforms: Windows x64 and macOS (Apple Silicon and Intel). macOS supp
 
 ## Quick start
 
-```powershell
+```sh
 lume login
 lume
-lume --project "C:\path\to\project"
+lume --project "/path/to/project"
 ```
 
 Sign in through your browser with your normal Lume account. Your session is stored in the Windows Credential Manager or the macOS Keychain, and the client contains no model provider keys. Type `/` inside Lume for commands, or `?` for keyboard shortcuts.
@@ -60,7 +60,7 @@ cargo build --release
 cargo test
 ```
 
-Then run `target/release/lume-code login` on macOS, or `target\release\lume-code.exe login` on Windows.
+Run `target/release/lume-code login` on macOS, or `target\release\lume-code.exe login` on Windows. To build a self-contained npm package for the current host, run `npm pack` from `npm/`; `prepack` builds Lume Code and ASTRA automatically. Building requires Node.js 20+, Rust, and Cargo. The GitHub Actions workflow builds Windows and both macOS architectures for tagged releases; configure npm trusted publishing for the GitHub repository before creating a release tag.
 
 ## Documentation
 

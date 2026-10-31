@@ -1,0 +1,3 @@
+[submodule "third-party/ast-grep"]
+	path = third-party/ast-grep
+	url = https://github.com/ast-grep/ast-grep.git
