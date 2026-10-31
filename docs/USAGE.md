@@ -4,7 +4,7 @@ The full reference for commands, sessions, limits and publishing. For an overvie
 
 ## Install and sign in
 
-For an npm installation, run `npm install --global @selfnify/lume-code`, then
+For an npm installation, run `npm install --global lume-code`, then
 type `lume` from any project folder. The package supports Windows x64 and macOS (Apple Silicon and Intel). macOS support is new and still being tested.
 `lume login`, `lume logout`, and `lume --project "C:\path\to\project"` forward to
 the native app. `lume --help` and `lume --version` also work without signing in.
@@ -27,10 +27,7 @@ npm publish --access public --dry-run
 npm publish --access public
 ```
 
-The configured name is `@selfnify/lume-code`; your npm account must own or have
-publishing access to the `selfnify` scope. If you use your personal scope instead,
-run `npm pkg set "name=@YOUR_NPM_USERNAME/lume-code"` before publishing and use
-that name when installing.
+The package is published on npm as `lume-code` by the `selfnify` account.
 
 To install this local build before publishing, run `npm install --global .` from
 the `npm/` folder after `npm pack`, then run `lume` in your project folder.
