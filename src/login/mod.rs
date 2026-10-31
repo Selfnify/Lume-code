@@ -152,7 +152,10 @@ fn screen(terminal: &mut ratatui::DefaultTerminal, api: String) -> io::Result<bo
             return Ok(false);
         }
         let mut buttons = view::Buttons::default();
-        terminal.draw(|f| buttons = view::draw(f, &model))?;
+        terminal.draw(|f| {
+            buttons = view::draw(f, &model);
+            crate::background::colors::adapt_buffer(f.buffer_mut());
+        })?;
         if !event::poll(Duration::from_millis(50))? {
             continue;
         }

@@ -396,6 +396,7 @@ fn run(terminal: &mut DefaultTerminal) -> io::Result<()> {
             } else {
                 loading::draw(frame, t);
             }
+            background::colors::adapt_buffer(frame.buffer_mut());
         })?;
         let last_max = info.max_back;
         let button = info.button;
