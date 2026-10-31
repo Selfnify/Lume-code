@@ -13,6 +13,7 @@ test('forwards arguments literally and preserves the caller working directory an
       assert.equal(exe, process.execPath);
       assert.deepEqual(received, args);
       assert.equal(options.shell, false);
+        assert.equal(options.env.LUME_ASTRA_BIN.endsWith('ast-grep.exe'), true);
       assert.equal(options.stdio, 'inherit');
       assert.equal(options.cwd, undefined);
       return { status: 23 };
@@ -50,6 +51,7 @@ test('macOS builds start through the same launcher on both architectures', () =>
         assert.equal(exe, process.execPath);
         assert.deepEqual(received, ['login']);
         assert.equal(options.shell, false);
+        assert.ok(options.env.LUME_ASTRA_BIN.endsWith('ast-grep'));
         return { status: 0 };
       }
     });
