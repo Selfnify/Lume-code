@@ -127,7 +127,7 @@ pub(super) async fn authenticate(
         .redirect(reqwest::redirect::Policy::none())
         .build()
         .map_err(|e| e.to_string())?;
-    let start_body = json!({});
+    let start_body = json!({"client":"lume-code"});
     let started = tokio::select! {_=stopped(&stop)=>return Ok(None),r=post(&http,api,"/code/login/start",&start_body)=>r?};
     if !started.status.is_success() {
         return Err(request_error(&started.value));
