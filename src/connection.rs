@@ -1,6 +1,13 @@
 use reqwest::Client;
 use serde_json::{json, Value};
 
+pub enum SessionStatus {
+    Active,
+    Expired,
+    Banned { reason: String, appeal: String },
+    Unavailable(String),
+}
+
 #[derive(Clone)]
 pub struct Connection {
     pub http: Client,
@@ -95,6 +102,56 @@ impl Connection {
                 .into());
         }
         Ok(value)
+    }
+
+    pub async fn check_session(&self) -> SessionStatus {
+        let response = match self
+            .http
+            .get(format!("{}/auth/me", self.api))
+            .bearer_auth(&self.token)
+            .timeout(std::time::Duration::from_secs(15))
+            .send()
+            .await
+        {
+            Ok(response) => response,
+            Err(_) => {
+                return SessionStatus::Unavailable(
+                    "Lume could not be reached to check this account.".into(),
+                )
+            }
+        };
+        let status = response.status();
+        let value: Value = match response.json().await {
+            Ok(value) => value,
+            Err(_) => {
+                return SessionStatus::Unavailable(
+                    "Lume returned an unreadable account status.".into(),
+                )
+            }
+        };
+        if status.is_success() {
+            SessionStatus::Active
+        } else if value["code"] == "banned" {
+            SessionStatus::Banned {
+                reason: value["reason"].as_str().unwrap_or("").trim().to_owned(),
+                appeal: value["appeal"].as_str().unwrap_or("").trim().to_owned(),
+            }
+        } else if status == reqwest::StatusCode::UNAUTHORIZED {
+            SessionStatus::Expired
+        } else {
+            SessionStatus::Unavailable(
+                value["error"]
+                    .as_str()
+                    .unwrap_or("Lume could not check this account.")
+                    .to_owned(),
+            )
+        }
+    }
+}
+
+pub fn forget(api: &str) {
+    if let Ok(entry) = credential(api) {
+        let _ = entry.delete_credential();
     }
 }
 /// Only the private session returned after browser approval is persisted.

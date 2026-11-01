@@ -147,13 +147,45 @@ fn main() -> io::Result<()> {
         std::env::set_current_dir(std::fs::canonicalize(path)?)?;
     }
     let explicit_login = args.get(1).is_some_and(|v| v == "login");
-    if explicit_login || connection::Connection::load().is_err() {
+    if explicit_login {
         if !login::run()? {
             return Ok(());
         }
-        if explicit_login {
-            println!("Signed in to Lume Code.");
-            return Ok(());
+        println!("Signed in to Lume Code.");
+        return Ok(());
+    }
+    match connection::Connection::load() {
+        Ok(connection) => {
+            match tokio::runtime::Runtime::new()?.block_on(connection.check_session()) {
+                connection::SessionStatus::Active => {}
+                connection::SessionStatus::Banned { reason, appeal } => {
+                    connection::forget(&connection.api);
+                    eprintln!(
+                        "This Lume account is banned. Lume Code cannot sign in with this account."
+                    );
+                    if !reason.is_empty() {
+                        eprintln!("Reason: {reason}");
+                    }
+                    if !appeal.is_empty() {
+                        eprintln!("{appeal}");
+                    }
+                    return Ok(());
+                }
+                connection::SessionStatus::Expired => {
+                    connection::forget(&connection.api);
+                    if !login::run()? {
+                        return Ok(());
+                    }
+                }
+                connection::SessionStatus::Unavailable(message) => {
+                    eprintln!("{message} Starting Lume Code anyway; online features may not be available.");
+                }
+            }
+        }
+        Err(_) => {
+            if !login::run()? {
+                return Ok(());
+            }
         }
     }
     let mut terminal = ratatui::init();
