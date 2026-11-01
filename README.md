@@ -60,7 +60,9 @@ cargo build --release
 cargo test
 ```
 
-Run `target/release/lume-code login` on macOS, or `target\release\lume-code.exe login` on Windows. To build a self-contained npm package for the current host, run `npm pack` from `npm/`; `prepack` builds Lume Code and ASTRA automatically. Building requires Node.js 20+, Rust, and Cargo. The GitHub Actions workflow builds Windows and both macOS architectures for tagged releases; configure npm trusted publishing for the GitHub repository before creating a release tag.
+Run `target/release/lume-code login` on macOS, or `target\release\lume-code.exe login` on Windows. To build a self-contained npm package for the current host, run `npm pack` from `npm/`; `prepack` builds Lume Code and ASTRA automatically. Building requires Node.js 20+, Rust, and Cargo.
+
+GitHub Actions tests and builds Windows x64, macOS Apple Silicon, and macOS Intel after relevant changes are pushed to `main` (and for pull requests). To publish, bump the version in the root `Cargo.toml`, the root `Cargo.lock` package entry, and `npm/package.json` in the same commit, then push it to `main`. Publishing runs only after every platform build passes. The workflow publishes to npm with trusted publishing and provenance, verifies the package, creates a matching GitHub release, and attaches the platform binaries and npm tarball. Ordinary commits do not publish a package. Configure npm trusted publishing for `Selfnify/Lume-code` and `.github/workflows/native-release.yml` before the first automated release.
 
 ## Documentation
 
