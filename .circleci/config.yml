@@ -1,0 +1,76 @@
+version: 2.1
+
+jobs:
+  build-windows:
+    machine:
+      image: windows-server-2022-gui:current
+      shell: powershell.exe -ExecutionPolicy Bypass
+    resource_class: windows.medium
+    steps:
+      - checkout
+      - run:
+          name: Install Rust
+          command: |
+            if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) {
+              Invoke-WebRequest https://win.rustup.rs -OutFile rustup-init.exe
+              .\rustup-init.exe -y --default-host x86_64-pc-windows-msvc
+              $env:Path += ";$env:USERPROFILE\.cargo\bin"
+            }
+            git submodule update --init --recursive
+      - run:
+          name: Build Windows binaries
+          command: |
+            $env:Path += ";$env:USERPROFILE\.cargo\bin"
+            cargo build --release --locked
+            cargo build --release --locked --manifest-path third-party/ast-grep/Cargo.toml -p ast-grep
+            New-Item -ItemType Directory -Force release | Out-Null
+            Copy-Item target/release/lume-code.exe,third-party/ast-grep/target/release/ast-grep.exe release/
+      - store_artifacts:
+          path: release
+          destination: lume-code/windows-x64
+
+  build-macos:
+    macos:
+      xcode: 16.4.0
+    resource_class: m4pro.medium
+    steps:
+      - checkout
+      - run:
+          name: Install Rust targets and initialize ast-grep
+          command: |
+            set -euo pipefail
+            if ! command -v rustup >/dev/null 2>&1; then
+              curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+            fi
+            source "$HOME/.cargo/env"
+            rustup target add aarch64-apple-darwin x86_64-apple-darwin
+            git submodule update --init --recursive
+      - run:
+          name: Build macOS binaries for Apple silicon and Intel
+          command: |
+            set -euo pipefail
+            source "$HOME/.cargo/env"
+            mkdir -p release
+            for target in aarch64-apple-darwin x86_64-apple-darwin; do
+              cargo build --release --locked --target "$target"
+              cargo build --release --locked --manifest-path third-party/ast-grep/Cargo.toml -p ast-grep --target "$target"
+              arch=${target%%-*}
+              cp "target/$target/release/lume-code" "release/lume-code-$arch"
+              cp "third-party/ast-grep/target/$target/release/ast-grep" "release/ast-grep-$arch"
+              chmod +x "release/lume-code-$arch" "release/ast-grep-$arch"
+            done
+      - store_artifacts:
+          path: release
+          destination: lume-code/macos
+
+workflows:
+  build-on-main:
+    jobs:
+      - build-windows:
+          filters:
+            branches:
+              only: main
+      - build-macos:
+          filters:
+            branches:
+              only: main
