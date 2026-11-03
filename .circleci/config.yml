@@ -11,18 +11,25 @@ jobs:
       - run:
           name: Install Rust
           command: |
-            if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) {
+            $cargoBin = Join-Path $env:USERPROFILE ".cargo\bin"
+            $rustup = Join-Path $cargoBin "rustup.exe"
+            if (-not (Test-Path $rustup)) {
               Invoke-WebRequest https://win.rustup.rs -OutFile rustup-init.exe
               .\rustup-init.exe -y --default-host x86_64-pc-windows-msvc
-              $env:Path += ";$env:USERPROFILE\.cargo\bin"
             }
+            $env:Path = "$cargoBin;$env:Path"
+            & $rustup toolchain install --no-self-update stable-x86_64-pc-windows-msvc --profile minimal
+            & $rustup default stable-x86_64-pc-windows-msvc
+            & $rustup run stable-x86_64-pc-windows-msvc rustc --version --verbose
             git submodule update --init --recursive
       - run:
           name: Build Windows binaries
           command: |
-            $env:Path += ";$env:USERPROFILE\.cargo\bin"
-            cargo build --release --locked
-            cargo build --release --locked --manifest-path third-party/ast-grep/Cargo.toml -p ast-grep
+            $cargoBin = Join-Path $env:USERPROFILE ".cargo\bin"
+            $env:Path = "$cargoBin;$env:Path"
+            $rustup = Join-Path $cargoBin "rustup.exe"
+            & $rustup run stable-x86_64-pc-windows-msvc cargo build --release --locked
+            & $rustup run stable-x86_64-pc-windows-msvc cargo build --release --locked --manifest-path third-party/ast-grep/Cargo.toml -p ast-grep
             New-Item -ItemType Directory -Force release | Out-Null
             Copy-Item target/release/lume-code.exe,third-party/ast-grep/target/release/ast-grep.exe release/
       - store_artifacts:
