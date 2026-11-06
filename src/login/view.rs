@@ -1,5 +1,5 @@
 use super::{Model, Phase};
-use crate::background::{colors::cream_terracotta as theme, ui};
+use crate::background::{colors::active as theme, ui};
 use ratatui::{
     layout::{Constraint, Layout, Rect},
     style::{Modifier, Style},
@@ -27,7 +27,7 @@ pub fn draw(frame: &mut Frame, model: &Model) -> Buttons {
     let block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .border_style(Style::default().fg(theme::ACCENT));
+        .border_style(Style::default().fg(theme::accent()));
     let inner = block.inner(outer);
     frame.render_widget(block, outer);
     let chunks = Layout::vertical([
@@ -42,7 +42,7 @@ pub fn draw(frame: &mut Frame, model: &Model) -> Buttons {
     frame.render_widget(
         Paragraph::new("Lume Code").style(
             Style::default()
-                .fg(theme::ACCENT)
+                .fg(theme::accent())
                 .add_modifier(Modifier::BOLD),
         ),
         chunks[0],
@@ -50,7 +50,7 @@ pub fn draw(frame: &mut Frame, model: &Model) -> Buttons {
     frame.render_widget(
         Paragraph::new("Sign in with your Lume account to start working on your project.")
             .wrap(Wrap { trim: false })
-            .style(Style::default().fg(theme::TEXT)),
+            .style(Style::default().fg(theme::text())),
         chunks[1],
     );
     let mut lines = vec![
@@ -59,7 +59,7 @@ pub fn draw(frame: &mut Frame, model: &Model) -> Buttons {
             Style::default().fg(if matches!(model.phase, Phase::Error) {
                 Color::Red
             } else {
-                theme::TEXT
+                theme::text()
             }),
         ),
         Line::raw(""),
@@ -68,7 +68,7 @@ pub fn draw(frame: &mut Frame, model: &Model) -> Buttons {
         lines.extend([
             Line::styled(
                 format!("Confirmation code: {}", link.code),
-                Style::default().fg(theme::ACCENT),
+                Style::default().fg(theme::accent()),
             ),
             Line::raw("Check this code in your browser before approving."),
             Line::raw(""),
@@ -76,7 +76,7 @@ pub fn draw(frame: &mut Frame, model: &Model) -> Buttons {
             Line::raw(link.token.clone()),
             Line::raw(""),
             Line::raw("If the browser did not open, copy this URL:"),
-            Line::styled(link.url.clone(), Style::default().fg(theme::ACCENT)),
+            Line::styled(link.url.clone(), Style::default().fg(theme::accent())),
             Line::raw(""),
         ]);
         let remaining = link.expires_in.saturating_sub(
@@ -98,7 +98,7 @@ pub fn draw(frame: &mut Frame, model: &Model) -> Buttons {
     let info = Paragraph::new(lines)
         .wrap(Wrap { trim: false })
         .scroll((model.scroll, 0))
-        .style(Style::default().fg(theme::TEXT));
+        .style(Style::default().fg(theme::text()));
     frame.render_widget(info, chunks[2]);
     let buttons = Layout::horizontal([
         Constraint::Length(32),
@@ -124,7 +124,7 @@ pub fn draw(frame: &mut Frame, model: &Model) -> Buttons {
                         .borders(Borders::ALL)
                         .border_type(BorderType::Rounded),
                 )
-                .style(Style::default().fg(theme::TEXT)),
+                .style(Style::default().fg(theme::text())),
             rect,
         );
     }
@@ -137,7 +137,7 @@ pub fn draw(frame: &mut Frame, model: &Model) -> Buttons {
                         .borders(Borders::ALL)
                         .border_type(BorderType::Rounded),
                 )
-                .style(Style::default().fg(theme::TEXT)),
+                .style(Style::default().fg(theme::text())),
             buttons[1],
         );
         Some(buttons[1])

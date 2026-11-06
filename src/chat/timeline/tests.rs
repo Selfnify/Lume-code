@@ -18,7 +18,8 @@ fn clock_activity_shows_status_without_raw_output_in_live_or_saved_groups() {
             .map(|line| line.to_string())
             .collect::<Vec<_>>()
             .join("\n");
-        assert!(text.contains("✓ Date and time checked"));
+        assert!(text.contains("Ran a tool"));
+        assert!(text.contains("└ "));
         assert!(!text.contains("datetime"));
         assert!(!text.contains("GMT+00:00"));
         assert!(text.contains("verified contents"));
@@ -46,6 +47,7 @@ fn live_file_preview_keeps_the_newest_lines_visible() {
 }
 fn task(id: &str, done: bool) -> Task {
     Task {
+        command: String::new(),
         id: id.into(),
         name: "read_file".into(),
         label: if done { "File read" } else { "Reading file" }.into(),
@@ -55,41 +57,41 @@ fn task(id: &str, done: bool) -> Task {
     }
 }
 #[test]
-fn groups_start_immediately_keep_all_tools_and_only_expand_manually() {
+fn commands_render_as_ungrouped_rows_that_pulse_then_turn_green() {
     let mut timeline = Timeline::default();
-    let mut tasks = vec![task("one", false)];
+    let mut command = task("one", false);
+    command.name = "run_command".into();
+    command.command = "cargo test".into();
+    command.detail = "running tests".into();
+    let mut tasks = vec![command];
     assert_eq!(timeline.sync(&tasks), Some(0));
-    assert!(!timeline.groups[0].open);
     let mut lines = vec![];
     timeline.render(0, &mut lines);
-    assert!(lines[0].spans.len() > 1, "Running headers must shimmer");
-    assert!(!lines
-        .iter()
-        .any(|l| l.to_string().contains("verified contents")));
+    assert_eq!(lines[0].to_string(), "● Running cargo test");
+    assert!(matches!(
+        lines[0].spans[0].style.fg,
+        Some(Color::White) | Some(Color::DarkGray)
+    ));
+    assert!(lines.iter().any(|l| l.to_string().contains("└ running tests")));
     tasks[0].done = true;
-    tasks.push(task("two", true));
+    tasks[0].detail = "ok".into();
     timeline.sync(&tasks);
-    assert_eq!(timeline.groups[0].tasks.len(), 2);
-    timeline.current = None;
-    tasks.push(task("three", false));
-    assert_eq!(timeline.sync(&tasks), Some(1));
-    timeline.latest();
-    assert!(!timeline.groups[0].open);
-    assert!(timeline.groups[1].open);
-    timeline.groups[1].settled = true;
     let mut lines = vec![];
-    timeline.render(1, &mut lines);
-    assert_eq!(
-        lines[0].spans.len(),
-        1,
-        "Interrupted headers must stop shimmering"
-    );
-    assert!(lines
-        .iter()
-        .any(|l| l.to_string().contains("verified contents")));
-    assert!(lines
-        .iter()
-        .any(|l| l.to_string().contains("? Reading file")));
-    timeline.latest();
-    assert!(!timeline.groups[1].open);
+    timeline.render(0, &mut lines);
+    assert_eq!(lines[0].spans[0].style.fg, Some(Color::Green));
+    assert!(lines.iter().any(|l| l.to_string().contains("└ ok")));
+}
+#[test]
+fn command_rows_show_stdout_instead_of_raw_json() {
+    let mut timeline = Timeline::default();
+    let mut command = task("one", true);
+    command.name = "run_command".into();
+    command.command = "echo hi".into();
+    command.detail = r#"{"exit_code":0,"output_limit":65536,"stderr":"","stdout":"hi\r\n"}"#.into();
+    timeline.sync(&[command]);
+    let mut lines = vec![];
+    timeline.render(0, &mut lines);
+    let text = lines.iter().map(|l| l.to_string()).collect::<Vec<_>>().join("\n");
+    assert!(text.contains("└ hi"));
+    assert!(!text.contains("output_limit"));
 }

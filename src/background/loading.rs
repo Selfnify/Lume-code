@@ -7,7 +7,7 @@ use ratatui::{
     Frame,
 };
 
-use super::colors::cream_terracotta as theme;
+use super::colors::active as theme;
 
 pub const DURATION: f64 = 6.5;
 
@@ -41,7 +41,7 @@ pub fn draw(frame: &mut Frame, t: f64) {
     let area = frame.area();
     let x_half = Y_HALF * area.width as f64 / (2.0 * area.height.max(1) as f64);
     let canvas = Canvas::default()
-        .background_color(theme::BG)
+        .background_color(theme::bg())
         .marker(Marker::Braille)
         .x_bounds([-x_half, x_half])
         .y_bounds([-Y_HALF, Y_HALF])
@@ -74,9 +74,9 @@ fn paint(ctx: &mut Context, t: f64) {
             continue;
         }
         let color = if i % 2 == 0 {
-            theme::ACCENT
+            theme::accent()
         } else {
-            mix(theme::BG, theme::ACCENT, 0.32)
+            mix(theme::bg(), theme::accent(), 0.32)
         };
         draw_blade(ctx, blade_rot, progress, &xf, color);
     }
@@ -146,7 +146,7 @@ fn draw_glyph(ctx: &mut Context, offset: f64, strokes: &[Vec<(f64, f64)>], progr
                     y1: TEXT_Y + ay * TEXT_SCALE + oy,
                     x2: TEXT_X + (offset + bx) * TEXT_SCALE + ox,
                     y2: TEXT_Y + by * TEXT_SCALE + oy,
-                    color: theme::TEXT,
+                    color: theme::text(),
                 });
             }
         }
@@ -193,7 +193,7 @@ fn draw_core(ctx: &mut Context, stroke: f64, fill: f64, xf: &Xform) {
                 y1: w[0].1,
                 x2: w[1].0,
                 y2: w[1].1,
-                color: theme::ACCENT,
+                color: theme::accent(),
             });
         }
     }
@@ -206,7 +206,7 @@ fn draw_core(ctx: &mut Context, stroke: f64, fill: f64, xf: &Xform) {
                 x: cx,
                 y: cy,
                 radius: r,
-                color: theme::ACCENT,
+                color: theme::accent(),
             });
         }
     }

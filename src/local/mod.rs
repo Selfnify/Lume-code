@@ -1,4 +1,5 @@
 mod commands;
+pub mod jobs;
 mod files;
 mod lifetime;
 mod astra;

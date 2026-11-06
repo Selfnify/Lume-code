@@ -1,5 +1,5 @@
 //! Markdown is presentation only. Original conversation text stays unchanged.
-use crate::background::colors::cream_terracotta as theme;
+use crate::background::colors::active as theme;
 use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
 use ratatui::{
     style::{Color, Modifier, Style},
@@ -18,6 +18,8 @@ struct Renderer {
     items: Vec<usize>,
     quote: usize,
     code: bool,
+    code_lang: String,
+    code_buf: String,
     links: Vec<String>,
 }
 
@@ -26,7 +28,7 @@ impl Renderer {
         self.styles
             .last()
             .copied()
-            .unwrap_or(Style::default().fg(theme::TEXT))
+            .unwrap_or(Style::default().fg(theme::text()))
     }
     fn prefix(&self) -> String {
         format!(
@@ -88,7 +90,7 @@ impl Renderer {
                 Tag::Heading { .. } => {
                     self.gap();
                     self.styles
-                        .push(self.style().fg(theme::ACCENT).add_modifier(Modifier::BOLD));
+                        .push(self.style().fg(theme::accent()).add_modifier(Modifier::BOLD));
                 }
                 Tag::Strong => self.decorated(Modifier::BOLD),
                 Tag::Emphasis => self.decorated(Modifier::ITALIC),
@@ -112,7 +114,7 @@ impl Renderer {
                         _ => "• ".into(),
                     };
                     let parent = self.items.last().copied().unwrap_or(0);
-                    self.add(&marker, Style::default().fg(theme::ACCENT));
+                    self.add(&marker, Style::default().fg(theme::accent()));
                     self.items.push(parent + marker.chars().count());
                 }
                 Tag::CodeBlock(kind) => {
@@ -121,6 +123,7 @@ impl Renderer {
                         CodeBlockKind::Fenced(v) => v.into_string(),
                         _ => String::new(),
                     };
+                    self.code_lang = language.clone();
                     self.add(
                         &format!(
                             "┌─ {}",
@@ -139,7 +142,7 @@ impl Renderer {
                     self.links.push(dest_url.into_string());
                     self.styles.push(
                         self.style()
-                            .fg(theme::ACCENT)
+                            .fg(theme::accent())
                             .add_modifier(Modifier::UNDERLINED),
                     );
                 }
@@ -179,6 +182,18 @@ impl Renderer {
                 TagEnd::CodeBlock => {
                     self.flush();
                     self.code = false;
+                    let code = std::mem::take(&mut self.code_buf);
+                    let lang = std::mem::take(&mut self.code_lang);
+                    for spans in highlight(&code, &lang) {
+                        if spans.iter().all(|(text, _)| text.is_empty()) {
+                            self.newline();
+                            continue;
+                        }
+                        for (text, color) in spans {
+                            self.add(&text, Style::default().fg(color).bg(CODE_BG));
+                        }
+                        self.flush();
+                    }
                     self.add("└─", Style::default().fg(MUTED));
                     self.gap();
                 }
@@ -190,13 +205,11 @@ impl Renderer {
                 }
                 _ => {}
             },
-            Event::Text(text) if self.code => {
-                self.multiline(&text, Style::default().fg(theme::TEXT).bg(CODE_BG))
-            }
+            Event::Text(text) if self.code => self.code_buf.push_str(&text),
             Event::Text(text) | Event::Html(text) | Event::InlineHtml(text) => {
                 self.multiline(&text, self.style())
             }
-            Event::Code(text) => self.add(&text, self.style().fg(theme::ACCENT).bg(CODE_BG)),
+            Event::Code(text) => self.add(&text, self.style().fg(theme::accent()).bg(CODE_BG)),
             Event::SoftBreak | Event::HardBreak => self.newline(),
             Event::Rule => {
                 self.gap();
@@ -205,7 +218,7 @@ impl Renderer {
             }
             Event::TaskListMarker(done) => self.add(
                 if done { "[✓] " } else { "[ ] " },
-                Style::default().fg(theme::ACCENT),
+                Style::default().fg(theme::accent()),
             ),
             _ => {}
         }
@@ -231,3 +244,39 @@ pub fn render(text: &str) -> Vec<Line<'static>> {
 
 #[cfg(test)]
 mod tests;
+
+fn highlight(code: &str, lang: &str) -> Vec<Vec<(String, Color)>> {
+    use std::sync::OnceLock;
+    use syntect::{
+        easy::HighlightLines,
+        highlighting::ThemeSet,
+        parsing::SyntaxSet,
+        util::LinesWithEndings,
+    };
+    static SYNTAXES: OnceLock<SyntaxSet> = OnceLock::new();
+    static THEMES: OnceLock<ThemeSet> = OnceLock::new();
+    let syntaxes = SYNTAXES.get_or_init(SyntaxSet::load_defaults_newlines);
+    let themes = THEMES.get_or_init(ThemeSet::load_defaults);
+    let theme = &themes.themes["InspiredGitHub"];
+    let syntax = syntaxes
+        .find_syntax_by_token(lang)
+        .unwrap_or_else(|| syntaxes.find_syntax_plain_text());
+    let mut highlighter = HighlightLines::new(syntax, theme);
+    LinesWithEndings::from(code)
+        .map(|line| {
+            match highlighter.highlight_line(line, syntaxes) {
+                Ok(ranges) => ranges
+                    .into_iter()
+                    .map(|(style, text)| {
+                        let c = style.foreground;
+                        (
+                            text.trim_end_matches(['\r', '\n']).to_string(),
+                            Color::Rgb(c.r, c.g, c.b),
+                        )
+                    })
+                    .collect(),
+                Err(_) => vec![(line.trim_end_matches(['\r', '\n']).to_string(), theme::text())],
+            }
+        })
+        .collect()
+}

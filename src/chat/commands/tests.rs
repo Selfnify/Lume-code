@@ -9,7 +9,7 @@ fn picker_filters_scrolls_inserts_and_closes() {
     let mut box_ = TextBox::new();
     box_.handle_key(key(KeyCode::Char('/')));
     assert_eq!(box_.commands().len(), COMMANDS.len());
-    for _ in 0..9 {
+    for _ in 0..11 {
         box_.handle_key(key(KeyCode::Down));
     }
     assert_eq!(box_.commands()[box_.selected].name, "/usage");

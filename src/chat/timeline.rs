@@ -1,4 +1,5 @@
 use super::tasker::Task;
+use crate::background::colors::active as theme;
 #[cfg(test)]
 mod tests;
 use ratatui::{
@@ -9,6 +10,7 @@ use ratatui::{
 pub struct Timeline {
     pub groups: Vec<Group>,
     pub current: Option<usize>,
+    pub full: bool,
 }
 pub struct Group {
     pub tasks: Vec<Task>,
@@ -17,6 +19,28 @@ pub struct Group {
     pub finished: Option<u64>,
     pub settled: bool,
     pub restored: bool,
+}
+fn command_lines(detail: &str) -> Vec<String> {
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(detail) else {
+        return detail.lines().map(str::to_owned).collect();
+    };
+    if v.get("stdout").is_none() && v.get("error").is_none() {
+        return detail.lines().map(str::to_owned).collect();
+    }
+    let mut out: Vec<String> = v["stdout"]
+        .as_str()
+        .unwrap_or("")
+        .lines()
+        .map(str::to_owned)
+        .collect();
+    out.extend(v["stderr"].as_str().unwrap_or("").lines().map(str::to_owned));
+    if let Some(code) = v["exit_code"].as_i64().filter(|c| *c != 0) {
+        out.push(format!("exit {code}"));
+    }
+    if let Some(error) = v["error"].as_str() {
+        out.push(error.to_owned());
+    }
+    out
 }
 impl Timeline {
     pub fn latest(&mut self) {
@@ -78,84 +102,71 @@ impl Timeline {
         let Some(group) = self.groups.get(index) else {
             return;
         };
-        let running = !group.settled && group.tasks.iter().any(|t| !t.done);
-        let label = group
-            .tasks
-            .iter()
-            .rev()
-            .find(|t| !t.done)
-            .or(group.tasks.last())
-            .map(|t| t.label.as_str())
-            .unwrap_or("Tool activity");
-        let text = format!(
-            "{} {} · {} tools{}",
-            if group.open { "⌄" } else { "❯" },
-            label,
-            group.tasks.len(),
-            if group.restored {
-                String::new()
-            } else {
-                format!(
-                    " · {}s",
-                    group
-                        .finished
-                        .unwrap_or_else(|| group.started.elapsed().as_secs())
-                )
-            }
-        );
         let phase = (std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_millis()
-            / 90) as usize;
-        let spans = if running {
-            text.chars()
-                .enumerate()
-                .map(|(i, c)| {
-                    let tone = [85, 100, 120, 140, 120, 100][(i + phase) % 6];
-                    Span::styled(
-                        c.to_string(),
-                        Style::default().fg(Color::Rgb(tone, tone - 5, tone - 12)),
-                    )
-                })
-                .collect()
-        } else {
-            vec![Span::styled(text, Style::default().fg(Color::DarkGray))]
-        };
-        lines.push(Line::from(spans));
-        if group.open {
-            for task in &group.tasks {
-                lines.push(Line::raw(format!(
-                    "  {} {}",
-                    if !task.done {
-                        if group.settled {
-                            "?"
-                        } else {
-                            "…"
-                        }
-                    } else if task.failed {
-                        "!"
-                    } else {
-                        "✓"
-                    },
-                    task.label
-                )));
-                if task.name == "get_datetime" {
-                    continue;
-                }
-                let detail = task.detail.lines().collect::<Vec<_>>();
-                let visible = if task.done {
-                    &detail[..detail.len().min(30)]
+            / 400) as usize;
+        for task in &group.tasks {
+            let color = if !task.done {
+                if phase % 2 == 0 {
+                    Color::White
                 } else {
-                    &detail[detail.len().saturating_sub(30)..]
-                };
-                for text in visible {
-                    lines.push(Line::styled(
-                        format!("    {}", crate::clean(text)),
-                        Style::default().fg(Color::DarkGray),
-                    ));
+                    Color::DarkGray
                 }
+            } else if task.failed {
+                Color::Red
+            } else {
+                Color::Green
+            };
+            let verb = if task.done { "Ran" } else { "Running" };
+            let title = if !task.command.is_empty() {
+                format!("{verb} {}", task.command)
+            } else {
+                format!("{verb} a tool")
+            };
+            lines.push(Line::from(vec![
+                Span::styled("● ", Style::default().fg(color)),
+                Span::raw(title),
+            ]));
+            let detail: Vec<String> = if task.name == "get_datetime" {
+                vec![]
+            } else if task.name == "run_command" {
+                command_lines(&task.detail)
+            } else {
+                task.detail.lines().map(str::to_owned).collect()
+            };
+            let keep = if self.full { 30 } else { 3 };
+            let visible = &detail[detail.len().saturating_sub(keep)..];
+            let is_diff = detail.iter().any(|l| l.starts_with("@@"));
+            if visible.is_empty() {
+                lines.push(Line::styled(
+                    "  └ (no output)",
+                    Style::default().fg(theme::text()),
+                ));
             }
+            for (i, text) in visible.iter().enumerate() {
+                let branch = if i == 0 { "└ " } else { "  " };
+                let clean_text = crate::clean(text.as_str()).chars().take(160).collect::<String>();
+                let color = if is_diff {
+                    if clean_text.starts_with("@@") {
+                        theme::accent()
+                    } else if clean_text.starts_with('+') && !clean_text.starts_with("+++") {
+                        Color::Green
+                    } else if clean_text.starts_with('-') && !clean_text.starts_with("---") {
+                        Color::Red
+                    } else {
+                        theme::text()
+                    }
+                } else {
+                    theme::text()
+                };
+                lines.push(Line::styled(
+                    format!("  {branch}{clean_text}"),
+                    Style::default().fg(color),
+                ));
+            }
+            lines.push(Line::raw(""));
         }
         lines.push(Line::raw(""));
     }

@@ -26,6 +26,8 @@ fn session_picker_searches_titles_and_folders_and_submits_selection() {
         .collect::<String>();
     assert!(text.contains("Second app"));
     assert!(text.contains("C:/Projects/two"));
+    assert_eq!(box_.handle_key(key(crossterm::event::KeyCode::Enter)), None);
+    assert!(box_.resume_choice.is_some());
     assert_eq!(
         box_.handle_key(key(crossterm::event::KeyCode::Enter))
             .as_deref(),

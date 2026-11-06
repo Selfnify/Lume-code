@@ -1,27 +1,12 @@
-use serde_json::{json, Value};
-use std::{path::Path, process::Stdio, time::Duration};
-use tokio::{
-    io::{AsyncRead, AsyncReadExt, AsyncWriteExt},
-    process::Command,
-};
-async fn output<R: AsyncRead + Unpin>(mut pipe: R) -> String {
-    let mut kept = vec![];
-    let mut buf = [0u8; 4096];
-    loop {
-        match pipe.read(&mut buf).await {
-            Ok(0) | Err(_) => break,
-            Ok(n) => {
-                let left = 65536usize.saturating_sub(kept.len());
-                kept.extend_from_slice(&buf[..n.min(left)]);
-            }
-        }
-    }
-    String::from_utf8_lossy(&kept).into_owned()
-}
+use serde_json::Value;
+use std::path::Path;
 
 #[cfg(all(test, windows))]
 mod tests {
-    use super::*;
+    use super::run;
+    use serde_json::json;
+    use std::time::Duration;
+
     #[tokio::test]
     async fn native_command_runs_and_cancellation_terminates_descendants() {
         let temp = tempfile::tempdir().unwrap();
@@ -51,68 +36,15 @@ mod tests {
         );
     }
 }
+
 pub async fn run(root: &Path, args: &Value) -> Result<Value, String> {
     let script = args["command"]
         .as_str()
         .filter(|s| !s.is_empty() && s.len() <= 16000)
         .ok_or("Provide a finite shell command up to 16 KB.")?;
-    let mut command = if cfg!(windows) {
-        let mut c = Command::new("powershell.exe");
-        c.args([
-            "-NoLogo",
-            "-NoProfile",
-            "-NonInteractive",
-            "-Command",
-            script,
-        ]);
-        c
-    } else {
-        let mut c = Command::new("sh");
-        c.args(["-c", script]);
-        c
-    };
-    command
-        .current_dir(root)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .kill_on_drop(true);
-    #[cfg(unix)]
-    command.process_group(0);
-    let mut child = command.spawn().map_err(|e| e.to_string())?;
-    let _tree = match super::lifetime::ProcessTree::attach(&child) {
-        Ok(v) => v,
-        Err(e) => {
-            let _ = child.kill().await;
-            return Err(e);
-        }
-    };
-    let stdout = tokio::spawn(output(child.stdout.take().unwrap()));
-    let stderr = tokio::spawn(output(child.stderr.take().unwrap()));
-    if let Some(mut stdin) = child.stdin.take() {
-        let input = args["stdin"].as_str().unwrap_or("").as_bytes().to_vec();
-        tokio::spawn(async move {
-            let _ = stdin.write_all(&input).await;
-        });
+    let stdin = args["stdin"].as_str().unwrap_or("");
+    if args["background"].as_bool() == Some(true) {
+        return super::jobs::start(root, script, stdin);
     }
-    let code = match tokio::time::timeout(Duration::from_secs(60), child.wait()).await {
-        Ok(result) => result.map_err(|e| e.to_string())?.code().unwrap_or(-1),
-        Err(_) => {
-            let _ = child.kill().await;
-            stdout.abort();
-            stderr.abort();
-            return Err("Command reached the 60-second limit and was stopped. Inspect its saved work before retrying.".into());
-        }
-    };
-    let out = tokio::time::timeout(Duration::from_secs(2), stdout)
-        .await
-        .ok()
-        .and_then(Result::ok)
-        .unwrap_or_default();
-    let err = tokio::time::timeout(Duration::from_secs(2), stderr)
-        .await
-        .ok()
-        .and_then(Result::ok)
-        .unwrap_or_default();
-    Ok(json!({"exit_code":code,"stdout":out,"stderr":err,"output_limit":65536}))
+    super::jobs::run_foreground(root, script, stdin).await
 }

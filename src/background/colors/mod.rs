@@ -1,5 +1,11 @@
 #[path = "cream-terracotta.rs"]
 pub mod cream_terracotta;
+pub mod active;
+pub mod arctic;
+pub mod forest;
+pub mod midnight;
+pub mod obsidian;
+pub mod sunset;
 
 use ratatui::{buffer::Buffer, style::Color};
 

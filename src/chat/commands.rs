@@ -1,4 +1,4 @@
-use crate::background::colors::cream_terracotta as theme;
+use crate::background::colors::active as theme;
 #[cfg(test)]
 mod tests;
 use ratatui::{
@@ -61,6 +61,16 @@ pub const COMMANDS: &[Command] = &[
         description: "Search saved sessions and working folders",
     },
     Command {
+        name: "/ps",
+        usage: "/ps",
+        description: "Show background terminals",
+    },
+    Command {
+        name: "/stop",
+        usage: "/stop",
+        description: "Stop background terminals",
+    },
+    Command {
         name: "/usage",
         usage: "/usage",
         description: "Show usage and allowance reset times",
@@ -120,6 +130,21 @@ pub const COMMANDS: &[Command] = &[
         usage: "/new",
         description: "Alias for /clear",
     },
+    Command {
+        name: "/theme",
+        usage: "/theme",
+        description: "Change the colour theme",
+    },
+    Command {
+        name: "/copy",
+        usage: "/copy",
+        description: "Copy the last reply to the clipboard",
+    },
+    Command {
+        name: "/settings",
+        usage: "/settings",
+        description: "Turn features on or off",
+    },
 ];
 pub const SHORTCUTS: &str = "Keyboard shortcuts\n\n/                 Find commands\n↑ / ↓             Select a command\nTab / Enter       Insert selected command\nEnter             Send message or run command\nEsc               Close menu or stop reply/side question\nShift-Tab         Switch Plan / Edit\nCtrl-T            Expand latest inline tool group\nCtrl-R            Prepare Continue for interrupted work\nPageUp / PageDown  Scroll conversation\nEnd               Return to newest message\nCtrl-D twice      Exit Lume Code\n? (empty textbox) Show / hide this guide\n\nPress Esc or ? to close.";
 
@@ -146,7 +171,7 @@ pub fn draw(frame: &mut Frame, area: Rect, commands: &[&Command], selected: usiz
                     .fg(Color::Rgb(35, 95, 190))
                     .add_modifier(Modifier::BOLD)
             } else {
-                Style::default().fg(theme::TEXT)
+                Style::default().fg(theme::text())
             };
             Line::from(vec![Span::styled(
                 format!(
@@ -160,7 +185,7 @@ pub fn draw(frame: &mut Frame, area: Rect, commands: &[&Command], selected: usiz
         })
         .collect();
     frame.render_widget(
-        Paragraph::new(lines).style(Style::default().bg(theme::BG)),
+        Paragraph::new(lines).style(Style::default().bg(theme::bg())),
         area,
     );
 }

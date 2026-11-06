@@ -4,6 +4,7 @@ pub struct Task {
     pub id: String,
     pub name: String,
     pub label: String,
+    pub command: String,
     pub done: bool,
     pub failed: bool,
     pub detail: String,
@@ -53,6 +54,38 @@ fn finished_label(name: &str) -> &str {
         _ => label(name),
     }
 }
+fn readable_output(raw: &str) -> String {
+    match serde_json::from_str::<Value>(raw) {
+        Ok(v) if v.get("background").and_then(Value::as_bool) == Some(true) => format!(
+            "Started in background ({})",
+            v["job"].as_str().unwrap_or("job")
+        ),
+        Ok(v) if v.get("stdout").is_some() || v.get("stderr").is_some() => {
+            let stdout = v["stdout"].as_str().unwrap_or("").trim_end();
+            let stderr = v["stderr"].as_str().unwrap_or("").trim_end();
+            [stdout, stderr]
+                .into_iter()
+                .filter(|part| !part.is_empty())
+                .collect::<Vec<_>>()
+                .join("\n")
+        }
+        Ok(v) if v.get("content").is_some() => v["content"].as_str().unwrap_or("").to_string(),
+        Ok(v) if v.get("files").is_some() => v["files"]
+            .as_array()
+            .map(|files| {
+                files
+                    .iter()
+                    .filter_map(|f| f["path"].as_str())
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            })
+            .unwrap_or_default(),
+        Ok(v) if v.get("error").is_some() => v["error"].as_str().unwrap_or("").to_string(),
+        Ok(v) if v.is_object() || v.is_array() => "Done".to_string(),
+        _ => raw.to_string(),
+    }
+}
+
 pub fn apply(tasks: &mut Vec<Task>, turn: usize, v: &Value) {
     let state = v["state"].as_str().unwrap_or("");
     if !matches!(
@@ -70,6 +103,11 @@ pub fn apply(tasks: &mut Vec<Task>, turn: usize, v: &Value) {
     }
     let supplied = v["name"].as_str().filter(|s| !s.is_empty());
     let name = supplied.unwrap_or(state);
+    let command: String = if name == "run_command" {
+        v["command"].as_str().unwrap_or("").chars().take(300).collect()
+    } else {
+        String::new()
+    };
     let prefix = format!("{turn}_");
     let id = if let Some(id) = v["activity_id"].as_str() {
         format!("{prefix}{id}")
@@ -88,17 +126,22 @@ pub fn apply(tasks: &mut Vec<Task>, turn: usize, v: &Value) {
         "tool_done" | "tool_reused" | "tool_generation_failed" | "context_compacted"
     );
     let failed = v["ok"] == false || state == "tool_generation_failed";
-    let detail = if state == "file_preview" {
+    let raw = if state == "file_preview" {
         v["text_delta"].as_str().unwrap_or("")
     } else {
         v["output"].as_str().unwrap_or("")
     };
+    let shown = readable_output(raw);
+    let detail = shown.as_str();
     if let Some(t) = tasks.iter_mut().find(|t| t.id == id) {
         if let Some(name) = supplied {
             t.name = name.into();
             if !t.done {
                 t.label = label(name).into();
             }
+        }
+        if !command.is_empty() {
+            t.command = command.clone();
         }
         t.done |= done;
         t.failed |= failed;
@@ -134,6 +177,7 @@ pub fn apply(tasks: &mut Vec<Task>, turn: usize, v: &Value) {
             done,
             failed,
             detail: detail.chars().take(4000).collect(),
+            command,
         });
     }
 }
@@ -152,10 +196,11 @@ pub fn record(v: &Value) -> Value {
             out[key] = value.clone();
         }
     }
-    for key in ["output", "text_delta"] {
-        if let Some(value) = v[key].as_str() {
-            out[key] = json!(value.chars().take(4000).collect::<String>());
-        }
+    if let Some(value) = v["output"].as_str() {
+        out["output"] = json!(readable_output(value).chars().take(4000).collect::<String>());
+    }
+    if let Some(value) = v["text_delta"].as_str() {
+        out["text_delta"] = json!(value.chars().take(4000).collect::<String>());
     }
     out
 }
@@ -197,6 +242,32 @@ mod tests {
         );
         assert_eq!(tasks.len(), 1);
         assert_eq!(tasks[0].label, "File saved");
+    }
+    #[test]
+    fn tool_output_never_shows_raw_json() {
+        let mut tasks = vec![];
+        apply(
+            &mut tasks,
+            1,
+            &json!({"state":"tool_done","activity_id":"f","name":"list_files","ok":true,"output":"{\"files\":[{\"directory\":false,\"path\":\"index.html\"}],\"limit\":2000}"}),
+        );
+        assert_eq!(tasks[0].detail, "index.html");
+    }
+    #[test]
+    fn command_output_shows_stdout_not_raw_json() {
+        let mut tasks = vec![];
+        apply(
+            &mut tasks,
+            1,
+            &json!({"state":"tool_preparing","activity_id":"c","name":"run_command","command":"echo hi"}),
+        );
+        apply(
+            &mut tasks,
+            1,
+            &json!({"state":"tool_done","activity_id":"c","name":"run_command","ok":true,"output":"{\"exit_code\":0,\"output_limit\":65536,\"stderr\":\"\",\"stdout\":\"hi\\r\\n\"}"}),
+        );
+        assert_eq!(tasks[0].detail, "hi");
+        assert_eq!(tasks[0].command, "echo hi");
     }
     #[test]
     fn missing_result_ids_complete_the_right_tool_without_merging_distinct_calls() {

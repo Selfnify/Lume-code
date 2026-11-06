@@ -1,4 +1,6 @@
 use chat::tasker::{apply as apply_activity, Task};
+mod settings;
+mod clipboard;
 mod actions;
 #[path = "AI.rs"]
 mod ai;
@@ -24,7 +26,8 @@ use std::{
 use chrono::Local;
 use crossterm::{
     event::{
-        self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind, KeyModifiers,
+        self, DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
+        Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers,
         MouseButton, MouseEventKind,
     },
     execute,
@@ -37,7 +40,7 @@ use ratatui::{
     DefaultTerminal, Frame,
 };
 
-use background::{colors::cream_terracotta as theme, loading, ui};
+use background::{colors::active as theme, loading, ui};
 use chat::{
     header,
     textbox::textbox::{self as tb, TextBox},
@@ -131,6 +134,8 @@ enum Hit {
 }
 
 fn main() -> io::Result<()> {
+    background::colors::active::load_saved();
+    settings::load();
     let args = std::env::args().collect::<Vec<_>>();
     match tokio::runtime::Runtime::new()?.block_on(connection::command(&args)) {
         Ok(true) => return Ok(()),
@@ -189,9 +194,9 @@ fn main() -> io::Result<()> {
         }
     }
     let mut terminal = ratatui::init();
-    execute!(io::stdout(), EnableMouseCapture)?;
+    execute!(io::stdout(), EnableMouseCapture, EnableBracketedPaste)?;
     let result = run(&mut terminal);
-    let _ = execute!(io::stdout(), DisableMouseCapture);
+    let _ = execute!(io::stdout(), DisableBracketedPaste, DisableMouseCapture);
     ratatui::restore();
     result
 }
@@ -202,6 +207,7 @@ fn run(terminal: &mut DefaultTerminal) -> io::Result<()> {
     let tasker = false;
     let mut turn_number = 0;
     let mut approval: Option<(String, tokio::sync::oneshot::Sender<bool>)> = None;
+    let mut synthetic: std::collections::VecDeque<Event> = Default::default();
     let start = Instant::now();
     let mut textbox = TextBox::new();
     let mut messages: Vec<Message> = Vec::new();
@@ -217,7 +223,7 @@ fn run(terminal: &mut DefaultTerminal) -> io::Result<()> {
         plan: false,
     });
 
-    loop {
+    'main: loop {
         while let Ok(value) = monitor.events.try_recv() {
             textbox.usage = value;
         }
@@ -372,6 +378,13 @@ fn run(terminal: &mut DefaultTerminal) -> io::Result<()> {
                     }
                 }
                 ai::Event::Done => {
+                    if pending
+                        .as_ref()
+                        .is_some_and(|p| p.started.elapsed() >= Duration::from_secs(10))
+                    {
+                        if crate::settings::bell() { print!("\x07"); }
+                        let _ = std::io::Write::flush(&mut std::io::stdout());
+                    }
                     textbox.timeline.current = None;
                     for group in &mut textbox.timeline.groups {
                         group.settled = true;
@@ -435,8 +448,27 @@ fn run(terminal: &mut DefaultTerminal) -> io::Result<()> {
         scroll_back = info.back;
         let hits = info.hits;
 
-        if event::poll(Duration::from_millis(16))? {
-            match event::read()? {
+        if pending.is_none() && approval.is_none() && synthetic.is_empty() && !textbox.queued.is_empty() {
+            let next = textbox.queued.remove(0);
+            textbox.set_input(next);
+            synthetic.push_back(Event::Key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)));
+        }
+        if !synthetic.is_empty() || event::poll(Duration::from_millis(16))? {
+            let burst = match synthetic.pop_front() {
+                Some(event) => vec![event],
+                None => read_burst()?,
+            };
+            let presses = burst
+                .iter()
+                .filter(|event| match event {
+                    Event::Key(key) => key.kind == KeyEventKind::Press,
+                    Event::Paste(_) => true,
+                    _ => false,
+                })
+                .count();
+            let in_paste = presses > 1;
+            for event in burst {
+                match event {
                 Event::Mouse(mouse) => match mouse.kind {
                     MouseEventKind::ScrollUp => {
                         scroll_back = (scroll_back + WHEEL_STEP).min(last_max);
@@ -470,6 +502,9 @@ fn run(terminal: &mut DefaultTerminal) -> io::Result<()> {
                     }
                     _ => {}
                 },
+                Event::Paste(text) if approval.is_none() => {
+                    textbox.insert_paste(&text);
+                }
                 Event::Key(key) if key.kind == KeyEventKind::Press => {
                     if approval.is_some() {
                         if matches!(
@@ -484,6 +519,12 @@ fn run(terminal: &mut DefaultTerminal) -> io::Result<()> {
                             let _ = reply
                                 .send(matches!(key.code, KeyCode::Char('y') | KeyCode::Char('Y')));
                         }
+                        continue;
+                    }
+                    if key.code == KeyCode::Char('o')
+                        && key.modifiers.contains(KeyModifiers::CONTROL)
+                    {
+                        textbox.timeline.full = !textbox.timeline.full;
                         continue;
                     }
                     if key.code == KeyCode::Char('t')
@@ -537,7 +578,7 @@ fn run(terminal: &mut DefaultTerminal) -> io::Result<()> {
                         && key.modifiers.contains(KeyModifiers::CONTROL)
                     {
                         if exit_armed {
-                            break;
+                            break 'main;
                         }
                         exit_armed_at = Some(Instant::now());
                     } else {
@@ -551,6 +592,18 @@ fn run(terminal: &mut DefaultTerminal) -> io::Result<()> {
                             }
                             KeyCode::End => {
                                 scroll_back = 0;
+                            }
+                            KeyCode::Enter if in_paste && approval.is_none() => {
+                                textbox.insert_paste("\n");
+                            }
+                            KeyCode::Enter
+                                if working
+                                    && approval.is_none()
+                                    && !textbox.input().trim().is_empty()
+                                    && !textbox.input().starts_with("/btw ") =>
+                            {
+                                let text = textbox.take_input();
+                                textbox.queued.push(text.trim().to_string());
                             }
                             _ => {
                                 if done
@@ -619,6 +672,25 @@ fn run(terminal: &mut DefaultTerminal) -> io::Result<()> {
                                                 question.into(),
                                                 context,
                                             ));
+                                            continue;
+                                        }
+                                        if message == "/tools-full" {
+                                            textbox.timeline.full = !textbox.timeline.full;
+                                            continue;
+                                        }
+                                        if message == "/copy" {
+                                            let last = messages.iter().rev().find_map(|m| match m {
+                                                Message::Ai { text, .. } => Some(text.clone()),
+                                                _ => None,
+                                            });
+                                            let note = match last {
+                                                Some(text) => match clipboard::copy(&text) {
+                                                    Ok(()) => "Copied the last reply.".to_string(),
+                                                    Err(error) => format!("Could not copy: {error}"),
+                                                },
+                                                None => "There is no reply to copy yet.".to_string(),
+                                            };
+                                            messages.push(Message::Ai { text: note, summary: None });
                                             continue;
                                         }
                                         if message == "/tasks" {
@@ -694,7 +766,7 @@ fn run(terminal: &mut DefaultTerminal) -> io::Result<()> {
                                                 ]),
                                             );
                                             if result.is_ok() {
-                                                break;
+                                                break 'main;
                                             }
                                             messages.push(Message::Ai{text:"Could not finish signing out. Try lume-code logout after closing the app.".into(),summary:None});
                                             continue;
@@ -718,6 +790,7 @@ fn run(terminal: &mut DefaultTerminal) -> io::Result<()> {
                     }
                 }
                 _ => {}
+            }
             }
         }
     }
@@ -829,36 +902,11 @@ fn draw_screen(
     if let Some(label) = usage_monitor::label(&textbox.usage) {
         banners.push((label, Hit::Input("/usage".into())));
     }
-    if let Some(label) = session_store::recovery_text(&textbox.state["recovery"]) {
+    if let Some(label) = session_store::recovery_text(&textbox.state["recovery"])
+        .filter(|_| pending.is_none())
+    {
         banners.push((label, Hit::Input(session_store::CONTINUE.into())));
     }
-    let folders = textbox.state["directories"]
-        .as_array()
-        .map(|v| {
-            v.iter()
-                .enumerate()
-                .map(|(i, p)| {
-                    format!(
-                        "dir{}={}",
-                        i + 1,
-                        std::path::Path::new(p.as_str().unwrap_or(""))
-                            .file_name()
-                            .unwrap_or_default()
-                            .to_string_lossy()
-                    )
-                })
-                .collect::<Vec<_>>()
-                .join(" · ")
-        })
-        .unwrap_or_default();
-    banners.push((
-        format!(
-            "Folders: main{}{} · /dirs",
-            if folders.is_empty() { "" } else { " · " },
-            folders
-        ),
-        Hit::Input("/dirs".into()),
-    ));
     let banner_height = banners
         .iter()
         .map(|(s, _)| {
@@ -869,10 +917,10 @@ fn draw_screen(
         })
         .sum::<u16>();
     let chunks = Layout::vertical([
-        Constraint::Length(4),
+        Constraint::Length(header::height(area.width)),
         Constraint::Min(1),
         Constraint::Length(banner_height + 1),
-        Constraint::Length(3),
+        Constraint::Length(textbox.height()),
         Constraint::Length(1),
     ])
     .split(area);
@@ -902,18 +950,6 @@ fn draw_screen(
         timeline.sync(tasks);
         timeline.groups[0].open = tasker;
         timeline.render(0, &mut lines);
-    }
-    if let Some(label) = approval {
-        for line in label.lines() {
-            lines.push(Line::styled(
-                clean(line),
-                Style::default().fg(theme::ACCENT),
-            ));
-        }
-        lines.push(Line::styled(
-            "[Y] Approve  [N] Deny",
-            Style::default().fg(theme::ACCENT),
-        ));
     }
     let height = chunks[1].height as usize;
     let rendered = Paragraph::new(lines.clone())
@@ -961,7 +997,7 @@ fn draw_screen(
     let history = Paragraph::new(lines)
         .wrap(Wrap { trim: false })
         .scroll((top, 0))
-        .style(Style::default().bg(theme::BG));
+        .style(Style::default().bg(theme::bg()));
     frame.render_widget(history, chunks[1]);
 
     let mut banner_y = chunks[2].y;
@@ -975,7 +1011,7 @@ fn draw_screen(
         frame.render_widget(
             Paragraph::new(text)
                 .wrap(Wrap { trim: false })
-                .style(Style::default().fg(theme::ACCENT).bg(theme::BG)),
+                .style(Style::default().fg(theme::accent()).bg(theme::bg())),
             rect,
         );
         hits.push((rect, action));
@@ -983,23 +1019,24 @@ fn draw_screen(
     }
     if let Some(p) = pending {
         let spinner_line = Line::from(vec![
-            Span::styled(spinner, Style::default().fg(theme::ACCENT)),
+            Span::styled(spinner, Style::default().fg(theme::accent())),
             Span::styled(
                 format!(
-                    " {} · {} tools · Ctrl-T tasks",
+                    " {} · {}s · {} tools · esc to interrupt · Ctrl-T tasks",
                     tasks
                         .iter()
                         .rev()
                         .find(|t| !t.done)
                         .map(|t| t.label.as_str())
                         .unwrap_or(p.word),
+                    p.started.elapsed().as_secs(),
                     tasks.len()
                 ),
-                Style::default().fg(theme::TEXT),
+                Style::default().fg(theme::text()),
             ),
         ]);
         frame.render_widget(
-            Paragraph::new(spinner_line).style(Style::default().bg(theme::BG)),
+            Paragraph::new(spinner_line).style(Style::default().bg(theme::bg())),
             Rect::new(
                 chunks[2].x,
                 chunks[2].bottom().saturating_sub(1),
@@ -1021,6 +1058,87 @@ fn draw_screen(
             textbox.selected,
         );
     }
+    if let Some(label) = approval {
+        let body: Vec<&str> = label.lines().collect();
+        let height = ((body.len() + 4) as u16).min(chunks[3].y);
+        let area = Rect::new(chunks[3].x, chunks[3].y - height, chunks[3].width, height);
+        let mut modal: Vec<Line> = body
+            .iter()
+            .map(|line| Line::styled(clean(line), Style::default().fg(theme::text())))
+            .collect();
+        modal.push(Line::raw(""));
+        modal.push(Line::styled(
+            "[Y] Approve   [N] Deny",
+            Style::default()
+                .fg(theme::accent())
+                .add_modifier(ratatui::style::Modifier::BOLD),
+        ));
+        frame.render_widget(ratatui::widgets::Clear, area);
+        frame.render_widget(
+            Paragraph::new(modal)
+                .wrap(Wrap { trim: false })
+                .block(
+                    ratatui::widgets::Block::default()
+                        .borders(ratatui::widgets::Borders::ALL)
+                        .border_type(ratatui::widgets::BorderType::Rounded)
+                        .border_style(Style::default().fg(theme::accent()))
+                        .title(" Approval required "),
+                )
+                .style(Style::default().bg(theme::bg())),
+            area,
+        );
+    }
+    if !textbox.queued.is_empty() {
+        let shown: Vec<Line> = textbox
+            .queued
+            .iter()
+            .take(3)
+            .map(|text| {
+                Line::styled(
+                    format!("↳ queued: {}", clean(text)),
+                    Style::default().fg(theme::text()),
+                )
+            })
+            .collect();
+        let height = (shown.len() as u16).min(chunks[3].y);
+        frame.render_widget(
+            Paragraph::new(shown).style(Style::default().bg(theme::bg())),
+            Rect::new(chunks[3].x, chunks[3].y - height, chunks[3].width, height),
+        );
+    }
+    if !textbox.mention_matches().is_empty() {
+        let names = textbox.mention_matches().len() as u16;
+        let height = (names + 2).min(chunks[3].y);
+        tb::draw_mention_menu(
+            frame,
+            Rect::new(chunks[3].x, chunks[3].y - height, chunks[3].width, height),
+            textbox,
+        );
+    }
+    if textbox.resume_choice.is_some() {
+        let height = 4u16.min(chunks[3].y);
+        tb::draw_resume_choice(
+            frame,
+            Rect::new(chunks[3].x, chunks[3].y - height, chunks[3].width, height),
+            textbox,
+        );
+    }
+    if textbox.settings_open() {
+        let height = ((crate::settings::ITEMS.len() as u16) + 2).min(chunks[3].y);
+        tb::draw_settings_menu(
+            frame,
+            Rect::new(chunks[3].x, chunks[3].y - height, chunks[3].width, height),
+            textbox,
+        );
+    }
+    if textbox.theme_menu_open() {
+        let height = ((theme::count() as u16) + 2).min(chunks[3].y);
+        tb::draw_theme_menu(
+            frame,
+            Rect::new(chunks[3].x, chunks[3].y - height, chunks[3].width, height),
+            textbox,
+        );
+    }
     if textbox.shortcuts {
         use ratatui::widgets::Clear;
         let height = 20.min(chunks[3].y);
@@ -1028,7 +1146,7 @@ fn draw_screen(
         frame.render_widget(Clear, area);
         frame.render_widget(
             Paragraph::new(chat::commands::SHORTCUTS)
-                .style(Style::default().fg(theme::TEXT).bg(theme::BG)),
+                .style(Style::default().fg(theme::text()).bg(theme::bg())),
             area,
         );
     }
@@ -1051,13 +1169,13 @@ fn draw_screen(
                     Style::default().fg(if i == textbox.selected {
                         Color::Rgb(35, 95, 190)
                     } else {
-                        theme::TEXT
+                        theme::text()
                     }),
                 )
             })
             .collect::<Vec<_>>();
         frame.render_widget(
-            Paragraph::new(list).style(Style::default().bg(theme::BG)),
+            Paragraph::new(list).style(Style::default().bg(theme::bg())),
             rect,
         );
     }
@@ -1078,7 +1196,7 @@ fn draw_screen(
         frame.render_widget(
             Paragraph::new(Line::from(Span::styled(
                 "  ↓  ",
-                Style::default().fg(theme::TEXT).bg(BUTTON_BG),
+                Style::default().fg(theme::text()).bg(BUTTON_BG),
             ))),
             rect,
         );
@@ -1101,7 +1219,7 @@ fn push_message(lines: &mut Vec<Line<'static>>, message: &Message) {
             for (index, line) in text.lines().enumerate() {
                 lines.push(Line::styled(
                     format!("{}{}", if index == 0 { "> " } else { "  " }, clean(line)),
-                    Style::default().fg(theme::TEXT),
+                    Style::default().fg(theme::text()),
                 ));
             }
             lines.push(Line::raw(""));
@@ -1112,7 +1230,7 @@ fn push_message(lines: &mut Vec<Line<'static>>, message: &Message) {
             if let Some(s) = summary {
                 lines.push(Line::raw(""));
                 lines.push(Line::from(vec![
-                    Span::styled("✻ ", Style::default().fg(theme::ACCENT)),
+                    Span::styled("✻ ", Style::default().fg(theme::accent())),
                     Span::styled(
                         format!("{} for {}s · done {}", s.verb, s.secs, s.done_at),
                         Style::default().fg(Color::DarkGray),
@@ -1154,6 +1272,7 @@ mod ui_tests {
         };
         let tasks = vec![
             Task {
+                command: String::new(),
                 id: "one".into(),
                 name: "create_file".into(),
                 label: "Writing file".into(),
@@ -1162,6 +1281,7 @@ mod ui_tests {
                 detail: "LIVE FILE CONTENTS".into(),
             },
             Task {
+                command: String::new(),
                 id: "two".into(),
                 name: "read_file".into(),
                 label: "Read file".into(),
@@ -1199,14 +1319,14 @@ mod ui_tests {
             .collect::<String>()
     }
     #[test]
-    fn tasker_is_manual_live_and_approval_is_visible() {
-        let collapsed = screen(false, false);
-        assert!(!collapsed.contains("LIVE FILE CONTENTS"));
-        assert!(collapsed.contains("Writing file"));
-        let expanded = screen(true, true);
-        assert!(expanded.contains("LIVE FILE CONTENTS"));
-        assert!(expanded.contains("[Y] Approve"));
-        assert!(expanded.contains("✓ Read file"));
+    fn tasker_is_live_ungrouped_and_approval_is_visible() {
+        let shown = screen(false, false);
+        assert!(shown.contains("● Ran a tool"));
+        assert!(shown.contains("LIVE FILE CONTENTS"));
+        let approval = screen(true, true);
+        assert!(approval.contains("[Y] Approve"));
+        assert!(approval.contains("● Ran a tool"));
+        assert!(approval.contains("Finished file"));
     }
     #[test]
     fn terminal_control_sequences_are_removed() {
@@ -1275,4 +1395,17 @@ mod ui_tests {
                 .contains(Modifier::BOLD));
         }
     }
+}
+
+fn read_burst() -> std::io::Result<Vec<Event>> {
+    let mut events = vec![event::read()?];
+    let started = std::time::Instant::now();
+    while started.elapsed() < Duration::from_millis(120) && events.len() < 5000 {
+        if event::poll(Duration::from_millis(12))? {
+            events.push(event::read()?);
+        } else {
+            break;
+        }
+    }
+    Ok(events)
 }

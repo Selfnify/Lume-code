@@ -200,15 +200,18 @@ pub fn run(
                 .ok_or("Sign in to list saved sessions.")?
                 .clone();
             let catalog = crate::session_catalog::list(&c.api, email, &s.root, epoch)?;
-            if arg.trim().is_empty() {
+            let mut parts = arg.split_whitespace();
+            let id = parts.next().unwrap_or("").to_string();
+            let stay_here = parts.next() == Some("here");
+            if id.is_empty() {
                 let _ = out.send(Event::Picker(catalog));
             } else {
-                let entry = if arg.trim() == "latest" {
+                let entry = if id == "latest" {
                     catalog.first()
                 } else {
                     catalog
                         .iter()
-                        .find(|v| v["id"].as_str() == Some(arg.trim()))
+                        .find(|v| v["id"].as_str() == Some(id.as_str()))
                 };
                 let (mut saved, root) = if let Some(entry) = entry {
                     let file =
@@ -223,8 +226,9 @@ pub fn run(
                         directory(&s.root, entry["root"].as_str().unwrap_or(""))?,
                     )
                 } else {
-                    (sessions::resume(&current, arg.trim())?, s.root.clone())
+                    (sessions::resume(&current, &id)?, s.root.clone())
                 };
+                let root = if stay_here { s.root.clone() } else { root };
                 if saved["epoch"] != *epoch {
                     return Err("This saved session belongs to an earlier account-data version and cannot be restored.".into());
                 }
